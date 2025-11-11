@@ -6,22 +6,30 @@ defmodule FlowApi.Calendar do
   import Ecto.Query
   alias FlowApi.Repo
   alias FlowApi.Calendar.{Event, MeetingPreparation, MeetingOutcome, MeetingInsight}
+  alias FlowApi.Tags.{Tag, Tagging}
 
   def list_events(user_id, params \\ %{}) do
-    Event
+    events = Event
     |> where([e], e.user_id == ^user_id)
     |> apply_calendar_filters(params)
     |> apply_date_range(params)
-    |> preload([:contact, :deal, :preparation, :outcome, :attendees, :tags])
+    |> preload([:contact, :deal, :preparation, :outcome, :attendees])
     |> order_by([e], asc: e.start_time)
     |> Repo.all()
+
+    preload_tags(events)
   end
 
   def get_event(user_id, id) do
-    Event
+    event = Event
     |> where([e], e.id == ^id and e.user_id == ^user_id)
-    |> preload([:contact, :deal, :preparation, :outcome, :insights, :attendees, :tags])
+    |> preload([:contact, :deal, :preparation, :outcome, :insights, :attendees])
     |> Repo.one()
+
+    case event do
+      nil -> nil
+      event -> preload_tags(event)
+    end
   end
 
   def create_event(user_id, attrs) do
@@ -86,4 +94,38 @@ defmodule FlowApi.Calendar do
     where(query, [e], e.start_time >= ^start_date and e.start_time <= ^end_date)
   end
   defp apply_date_range(query, _), do: query
+
+  # Preload tags for polymorphic association
+  defp preload_tags(events) when is_list(events) do
+    event_ids = Enum.map(events, & &1.id)
+
+    tags_map =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id in ^event_ids and tg.taggable_type == "Event",
+        select: {tg.taggable_id, t}
+      )
+      |> Repo.all()
+      |> Enum.group_by(fn {event_id, _tag} -> event_id end, fn {_event_id, tag} -> tag end)
+
+    Enum.map(events, fn event ->
+      tags = Map.get(tags_map, event.id, [])
+      %{event | tags: tags}
+    end)
+  end
+
+  defp preload_tags(%Event{} = event) do
+    tags =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id == ^event.id and tg.taggable_type == "Event"
+      )
+      |> Repo.all()
+
+    %{event | tags: tags}
+  end
+
+  defp preload_tags(nil), do: nil
 end

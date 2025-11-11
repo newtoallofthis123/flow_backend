@@ -6,20 +6,28 @@ defmodule FlowApi.Deals do
   import Ecto.Query
   alias FlowApi.Repo
   alias FlowApi.Deals.{Deal, Activity, Signal, Insight}
+  alias FlowApi.Tags.{Tag, Tagging}
 
   def list_deals(user_id, params \\ %{}) do
-    Deal
+    deals = Deal
     |> where([d], d.user_id == ^user_id and is_nil(d.deleted_at))
     |> apply_deal_filters(params)
-    |> preload([:contact, :activities, :insights, :signals, :tags])
+    |> preload([:contact, :activities, :insights, :signals])
     |> Repo.all()
+
+    preload_tags(deals)
   end
 
   def get_deal(user_id, id) do
-    Deal
+    deal = Deal
     |> where([d], d.id == ^id and d.user_id == ^user_id and is_nil(d.deleted_at))
-    |> preload([:contact, :activities, :insights, :signals, :tags])
+    |> preload([:contact, :activities, :insights, :signals])
     |> Repo.one()
+
+    case deal do
+      nil -> nil
+      deal -> preload_tags(deal)
+    end
   end
 
   def create_deal(user_id, attrs) do
@@ -99,4 +107,38 @@ defmodule FlowApi.Deals do
     today = Date.utc_today()
     Date.beginning_of_month(date) == Date.beginning_of_month(today)
   end
+
+  # Preload tags for polymorphic association
+  defp preload_tags(deals) when is_list(deals) do
+    deal_ids = Enum.map(deals, & &1.id)
+
+    tags_map =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id in ^deal_ids and tg.taggable_type == "Deal",
+        select: {tg.taggable_id, t}
+      )
+      |> Repo.all()
+      |> Enum.group_by(fn {deal_id, _tag} -> deal_id end, fn {_deal_id, tag} -> tag end)
+
+    Enum.map(deals, fn deal ->
+      tags = Map.get(tags_map, deal.id, [])
+      %{deal | tags: tags}
+    end)
+  end
+
+  defp preload_tags(%Deal{} = deal) do
+    tags =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id == ^deal.id and tg.taggable_type == "Deal"
+      )
+      |> Repo.all()
+
+    %{deal | tags: tags}
+  end
+
+  defp preload_tags(nil), do: nil
 end

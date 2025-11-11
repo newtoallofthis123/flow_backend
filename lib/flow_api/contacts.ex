@@ -6,22 +6,30 @@ defmodule FlowApi.Contacts do
   import Ecto.Query
   alias FlowApi.Repo
   alias FlowApi.Contacts.{Contact, CommunicationEvent, AIInsight}
+  alias FlowApi.Tags.{Tag, Tagging}
 
   # Contact queries
   def list_contacts(user_id, params \\ %{}) do
-    Contact
+    contacts = Contact
     |> where([c], c.user_id == ^user_id and is_nil(c.deleted_at))
     |> apply_filters(params)
     |> apply_search(params)
     |> apply_sort(params)
     |> Repo.all()
+
+    preload_tags(contacts)
   end
 
   def get_contact(user_id, id) do
-    Contact
+    contact = Contact
     |> where([c], c.id == ^id and c.user_id == ^user_id and is_nil(c.deleted_at))
-    |> preload([:communication_events, :ai_insights, :deals, :tags])
+    |> preload([:communication_events, :ai_insights, :deals])
     |> Repo.one()
+
+    case contact do
+      nil -> nil
+      contact -> preload_tags(contact)
+    end
   end
 
   def create_contact(user_id, attrs) do
@@ -95,4 +103,38 @@ defmodule FlowApi.Contacts do
   defp apply_sort(query, %{"sort" => "name"}), do: order_by(query, [c], asc: c.name)
   defp apply_sort(query, %{"sort" => "health"}), do: order_by(query, [c], desc: c.health_score)
   defp apply_sort(query, _), do: order_by(query, [c], desc: c.health_score)
+
+  # Preload tags for polymorphic association
+  defp preload_tags(contacts) when is_list(contacts) do
+    contact_ids = Enum.map(contacts, & &1.id)
+
+    tags_map =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id in ^contact_ids and tg.taggable_type == "Contact",
+        select: {tg.taggable_id, t}
+      )
+      |> Repo.all()
+      |> Enum.group_by(fn {contact_id, _tag} -> contact_id end, fn {_contact_id, tag} -> tag end)
+
+    Enum.map(contacts, fn contact ->
+      tags = Map.get(tags_map, contact.id, [])
+      %{contact | tags: tags}
+    end)
+  end
+
+  defp preload_tags(%Contact{} = contact) do
+    tags =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id == ^contact.id and tg.taggable_type == "Contact"
+      )
+      |> Repo.all()
+
+    %{contact | tags: tags}
+  end
+
+  defp preload_tags(nil), do: nil
 end

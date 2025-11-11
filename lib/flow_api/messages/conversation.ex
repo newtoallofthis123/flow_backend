@@ -17,7 +17,9 @@ defmodule FlowApi.Messages.Conversation do
     belongs_to :user, FlowApi.Accounts.User
     belongs_to :contact, FlowApi.Contacts.Contact
     has_many :messages, FlowApi.Messages.Message
-    many_to_many :tags, FlowApi.Tags.Tag, join_through: FlowApi.Tags.Tagging
+
+    # Polymorphic association - tags are loaded via custom query
+    field :tags, {:array, :map}, virtual: true, default: []
 
     timestamps(type: :utc_datetime)
   end

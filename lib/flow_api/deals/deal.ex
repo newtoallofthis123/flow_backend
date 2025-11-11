@@ -25,7 +25,9 @@ defmodule FlowApi.Deals.Deal do
     has_many :activities, FlowApi.Deals.Activity
     has_many :insights, FlowApi.Deals.Insight
     has_many :signals, FlowApi.Deals.Signal
-    many_to_many :tags, FlowApi.Tags.Tag, join_through: FlowApi.Tags.Tagging
+
+    # Polymorphic association - tags are loaded via custom query
+    field :tags, {:array, :map}, virtual: true, default: []
 
     timestamps(type: :utc_datetime)
   end

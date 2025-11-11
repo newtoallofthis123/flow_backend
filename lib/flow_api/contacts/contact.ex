@@ -28,7 +28,9 @@ defmodule FlowApi.Contacts.Contact do
     has_many :communication_events, FlowApi.Contacts.CommunicationEvent
     has_many :ai_insights, FlowApi.Contacts.AIInsight
     has_many :conversations, FlowApi.Messages.Conversation
-    many_to_many :tags, FlowApi.Tags.Tag, join_through: FlowApi.Tags.Tagging
+
+    # Polymorphic association - tags are loaded via custom query
+    field :tags, {:array, :map}, virtual: true, default: []
 
     timestamps(type: :utc_datetime)
   end
