@@ -6,21 +6,24 @@ defmodule FlowApi.Messages do
   import Ecto.Query
   alias FlowApi.Repo
   alias FlowApi.Messages.{Conversation, Message, MessageAnalysis, MessageTemplate}
+  alias FlowApi.Tags.{Tag, Tagging}
 
   def list_conversations(user_id, params \\ %{}) do
     Conversation
     |> where([c], c.user_id == ^user_id)
     |> apply_conversation_filters(params)
-    |> preload([:contact, :messages, :tags])
+    |> preload([:contact, :messages])
     |> order_by([c], desc: c.last_message_at)
     |> Repo.all()
+    |> preload_tags()
   end
 
   def get_conversation(user_id, id) do
     Conversation
     |> where([c], c.id == ^id and c.user_id == ^user_id)
-    |> preload([messages: :analysis, contact: [], tags: []])
+    |> preload([messages: :analysis, contact: []])
     |> Repo.one()
+    |> preload_tags()
   end
 
   def send_message(conversation_id, attrs) do
@@ -62,4 +65,38 @@ defmodule FlowApi.Messages do
     end
   end
   defp apply_conversation_filters(query, _), do: query
+
+  # Preload tags for polymorphic association
+  defp preload_tags(conversations) when is_list(conversations) do
+    conversation_ids = Enum.map(conversations, & &1.id)
+
+    tags_map =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id in ^conversation_ids and tg.taggable_type == "Conversation",
+        select: {tg.taggable_id, t}
+      )
+      |> Repo.all()
+      |> Enum.group_by(fn {conversation_id, _tag} -> conversation_id end, fn {_conversation_id, tag} -> tag end)
+
+    Enum.map(conversations, fn conversation ->
+      tags = Map.get(tags_map, conversation.id, [])
+      %{conversation | tags: tags}
+    end)
+  end
+
+  defp preload_tags(%Conversation{} = conversation) do
+    tags =
+      from(t in Tag,
+        join: tg in Tagging,
+        on: t.id == tg.tag_id,
+        where: tg.taggable_id == ^conversation.id and tg.taggable_type == "Conversation"
+      )
+      |> Repo.all()
+
+    %{conversation | tags: tags}
+  end
+
+  defp preload_tags(nil), do: nil
 end
