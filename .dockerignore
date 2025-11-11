@@ -1,0 +1,62 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Documentation
+README.md
+docs/
+plans/
+
+# Dependencies
+flow_api/deps/
+flow_api/_build/
+flow_api/.elixir_ls/
+flow_api/.mix/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+flow_api/cover/
+flow_api/coverage/
+
+# Logs
+*.log
+flow_api/logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Node (if any frontend assets)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temporary files
+tmp/
+temp/
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile.dev
