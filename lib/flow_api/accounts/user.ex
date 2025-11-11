@@ -4,6 +4,7 @@ defmodule FlowApi.Accounts.User do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :password, :password_hash, :contacts, :deals, :conversations, :calendar_events, :notifications]}
 
   schema "users" do
     field :email, :string

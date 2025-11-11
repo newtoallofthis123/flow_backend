@@ -4,6 +4,7 @@ defmodule FlowApi.Dashboard.ActionItem do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :user]}
 
   schema "action_items" do
     field :icon, :string

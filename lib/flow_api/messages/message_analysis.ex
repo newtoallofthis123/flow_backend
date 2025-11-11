@@ -4,6 +4,7 @@ defmodule FlowApi.Messages.MessageAnalysis do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :message]}
 
   schema "message_analysis" do
     field :key_topics, {:array, :string}

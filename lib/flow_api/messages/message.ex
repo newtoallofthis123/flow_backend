@@ -4,6 +4,7 @@ defmodule FlowApi.Messages.Message do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :conversation, :sender, :analysis, :attachments]}
 
   schema "messages" do
     field :sender_name, :string

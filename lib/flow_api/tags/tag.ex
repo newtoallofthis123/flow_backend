@@ -4,6 +4,7 @@ defmodule FlowApi.Tags.Tag do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__]}
 
   schema "tags" do
     field :name, :string

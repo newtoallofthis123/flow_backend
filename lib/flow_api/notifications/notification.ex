@@ -4,6 +4,7 @@ defmodule FlowApi.Notifications.Notification do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :user]}
 
   schema "notifications" do
     field :type, :string

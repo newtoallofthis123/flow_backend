@@ -4,6 +4,7 @@ defmodule FlowApi.Contacts.AIInsight do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :contact]}
 
   schema "ai_insights" do
     field :insight_type, :string

@@ -4,6 +4,7 @@ defmodule FlowApi.Calendar.EventAttendee do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :event, :attendee]}
 
   schema "event_attendees" do
     field :status, :string, default: "pending"

@@ -4,6 +4,7 @@ defmodule FlowApi.Calendar.Event do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :user, :contact, :deal, :preparation, :outcome, :insights, :attendees]}
 
   schema "calendar_events" do
     field :title, :string

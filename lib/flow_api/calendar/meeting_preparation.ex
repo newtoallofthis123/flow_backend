@@ -4,6 +4,7 @@ defmodule FlowApi.Calendar.MeetingPreparation do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Jason.Encoder, except: [:__meta__, :event]}
 
   schema "meeting_preparations" do
     field :suggested_talking_points, {:array, :string}
