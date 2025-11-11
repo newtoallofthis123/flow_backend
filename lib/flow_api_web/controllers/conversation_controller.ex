@@ -31,10 +31,17 @@ defmodule FlowApiWeb.ConversationController do
     end
   end
 
-  def send_message(conn, %{"id" => conversation_id} = params) do
+  def send_message(conn, %{"conversation_id" => conversation_id} = params) do
     user = Guardian.Plug.current_resource(conn)
 
-    case Messages.send_message(conversation_id, params) do
+    message_params =
+      params
+      |> Map.put("sender_id", user.id)
+      |> Map.put("sender_name", user.name)
+      |> Map.put("sender_type", "user")
+      |> Map.put("sent_at", DateTime.utc_now() |> DateTime.truncate(:second))
+
+    case Messages.send_message(conversation_id, message_params) do
       {:ok, message} ->
         # Reload message with associations if needed
         Broadcast.broadcast_message_received(user.id, conversation_id, message)
