@@ -11,6 +11,8 @@ defmodule FlowApi.Application do
       FlowApiWeb.Telemetry,
       FlowApi.Repo,
       {Phoenix.PubSub, name: FlowApi.PubSub},
+      # Start Oban for background jobs
+      {Oban, Application.fetch_env!(:flow_api, Oban)},
       # Start the Finch HTTP client for HTTP requests
       {Finch, name: FlowApi.Finch},
       # Start to serve requests, typically the last entry

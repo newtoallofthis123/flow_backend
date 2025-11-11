@@ -3,6 +3,7 @@ defmodule FlowApiWeb.CalendarController do
 
   alias FlowApi.Calendar
   alias FlowApi.Guardian
+  alias FlowApiWeb.Channels.Broadcast
 
   def index(conn, params) do
     user = Guardian.Plug.current_resource(conn)
@@ -34,6 +35,10 @@ defmodule FlowApiWeb.CalendarController do
 
     case Calendar.create_event(user.id, params) do
       {:ok, event} ->
+        # Reload with associations for broadcast
+        event = Calendar.get_event(user.id, event.id)
+        Broadcast.broadcast_calendar_event_created(user.id, event)
+
         conn
         |> put_status(:created)
         |> json(%{data: event})
@@ -50,6 +55,10 @@ defmodule FlowApiWeb.CalendarController do
 
     with {:ok, event} <- find_event(user.id, id),
          {:ok, updated} <- Calendar.update_event(event, params) do
+      # Extract changes for broadcast
+      changes = extract_event_changes(params)
+      Broadcast.broadcast_calendar_event_updated(user.id, id, changes)
+
       conn
       |> put_status(:ok)
       |> json(%{data: updated})
@@ -87,6 +96,8 @@ defmodule FlowApiWeb.CalendarController do
 
     with {:ok, event} <- find_event(user.id, id),
          {:ok, updated} <- Calendar.update_event(event, %{status: status}) do
+      Broadcast.broadcast_calendar_event_updated(user.id, id, %{status: status})
+
       conn
       |> put_status(:ok)
       |> json(%{data: updated})
@@ -152,5 +163,11 @@ defmodule FlowApiWeb.CalendarController do
       nil -> {:error, :not_found}
       event -> {:ok, event}
     end
+  end
+
+  defp extract_event_changes(params) do
+    # Extract only the fields that are in params
+    Map.take(params, ["title", "description", "startTime", "endTime", "type", "location",
+                       "meetingLink", "status", "priority", "contactId", "dealId"])
   end
 end

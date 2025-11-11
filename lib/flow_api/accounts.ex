@@ -47,7 +47,7 @@ defmodule FlowApi.Accounts do
 
   def update_last_login(%User{} = user) do
     user
-    |> Ecto.Changeset.change(last_login_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(last_login_at: DateTime.utc_now() |> DateTime.truncate(:second))
     |> Repo.update()
   end
 end

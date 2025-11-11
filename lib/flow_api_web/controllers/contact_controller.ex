@@ -3,6 +3,8 @@ defmodule FlowApiWeb.ContactController do
 
   alias FlowApi.Contacts
   alias FlowApi.Guardian
+  alias FlowApiWeb.Channels.Broadcast
+  alias FlowApiWeb.Channels.Serializers
 
   def index(conn, params) do
     user = Guardian.Plug.current_resource(conn)
@@ -50,6 +52,18 @@ defmodule FlowApiWeb.ContactController do
 
     with {:ok, contact} <- find_contact(user.id, id),
          {:ok, updated} <- Contacts.update_contact(contact, params) do
+      # Check for health score changes
+      old_score = contact.health_score
+      new_score = updated.health_score
+
+      if old_score != new_score do
+        Broadcast.broadcast_contact_health_changed(user.id, id, old_score, new_score)
+      end
+
+      # Broadcast contact update
+      changes = Serializers.serialize_contact_changes(updated)
+      Broadcast.broadcast_contact_updated(user.id, id, changes)
+
       conn
       |> put_status(:ok)
       |> json(%{data: updated})

@@ -3,6 +3,7 @@ defmodule FlowApiWeb.DealController do
 
   alias FlowApi.Deals
   alias FlowApi.Guardian
+  alias FlowApiWeb.Channels.Broadcast
 
   def index(conn, params) do
     user = Guardian.Plug.current_resource(conn)
@@ -34,6 +35,10 @@ defmodule FlowApiWeb.DealController do
 
     case Deals.create_deal(user.id, params) do
       {:ok, deal} ->
+        # Reload with associations for broadcast
+        deal = Deals.get_deal(user.id, deal.id)
+        Broadcast.broadcast_deal_created(user.id, deal)
+
         conn
         |> put_status(:created)
         |> json(%{data: deal})
@@ -50,6 +55,10 @@ defmodule FlowApiWeb.DealController do
 
     with {:ok, deal} <- find_deal(user.id, id),
          {:ok, updated} <- Deals.update_deal(deal, params) do
+      # Extract only changed fields for broadcast
+      changes = extract_changes(deal, updated, params)
+      Broadcast.broadcast_deal_updated(user.id, id, changes)
+
       conn
       |> put_status(:ok)
       |> json(%{data: updated})
@@ -71,7 +80,7 @@ defmodule FlowApiWeb.DealController do
 
     with {:ok, deal} <- find_deal(user.id, id) do
       # Soft delete
-      {:ok, _} = Deals.update_deal(deal, %{deleted_at: DateTime.utc_now()})
+      {:ok, _} = Deals.update_deal(deal, %{deleted_at: DateTime.utc_now() |> DateTime.truncate(:second)})
       conn
       |> put_status(:ok)
       |> json(%{success: true})
@@ -88,6 +97,8 @@ defmodule FlowApiWeb.DealController do
 
     with {:ok, deal} <- find_deal(user.id, id),
          {:ok, updated} <- Deals.update_stage(deal, stage) do
+      Broadcast.broadcast_deal_stage_changed(user.id, id, updated.stage, updated.probability)
+
       conn
       |> put_status(:ok)
       |> json(%{data: updated})
@@ -104,6 +115,8 @@ defmodule FlowApiWeb.DealController do
 
     with {:ok, deal} <- find_deal(user.id, id),
          {:ok, activity} <- Deals.add_activity(deal.id, user.id, params) do
+      Broadcast.broadcast_deal_activity_added(user.id, deal.id, activity)
+
       conn
       |> put_status(:created)
       |> json(%{data: activity})
@@ -147,5 +160,13 @@ defmodule FlowApiWeb.DealController do
       nil -> {:error, :not_found}
       deal -> {:ok, deal}
     end
+  end
+
+  defp extract_changes(_old_deal, _new_deal, params) do
+    # Return params as changes - the frontend will handle partial updates
+    # Filter out any non-deal fields if needed
+    Map.take(params, ["title", "company", "value", "stage", "probability",
+                       "confidence", "expectedCloseDate", "description", "priority",
+                       "competitorMentioned", "contactId"])
   end
 end

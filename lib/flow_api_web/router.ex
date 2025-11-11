@@ -3,7 +3,6 @@ defmodule FlowApiWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug CORSPlug, origin: ["http://localhost:5173"]
   end
 
   pipeline :auth do

@@ -39,6 +39,12 @@ config :flow_api, FlowApi.Guardian,
   issuer: "flow_api",
   secret_key: "your-secret-key-generate-with-mix-guardian-gen-secret"
 
+# Configure Oban
+config :flow_api, Oban,
+  repo: FlowApi.Repo,
+  plugins: [Oban.Plugins.Pruner],
+  queues: [default: 10, reminders: 5]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

@@ -38,7 +38,7 @@ defmodule FlowApi.Messages do
 
   def update_conversation_timestamp(conversation_id) do
     from(c in Conversation, where: c.id == ^conversation_id)
-    |> Repo.update_all(set: [last_message_at: DateTime.utc_now()])
+    |> Repo.update_all(set: [last_message_at: DateTime.utc_now() |> DateTime.truncate(:second)])
   end
 
   def get_stats(user_id) do

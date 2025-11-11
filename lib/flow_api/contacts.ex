@@ -38,7 +38,7 @@ defmodule FlowApi.Contacts do
 
   def delete_contact(%Contact{} = contact) do
     contact
-    |> Ecto.Changeset.change(deleted_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(deleted_at: DateTime.utc_now() |> DateTime.truncate(:second))
     |> Repo.update()
   end
 

@@ -3,6 +3,8 @@ defmodule FlowApiWeb.ConversationController do
 
   alias FlowApi.Messages
   alias FlowApi.Guardian
+  alias FlowApi.Repo
+  alias FlowApiWeb.Channels.Broadcast
 
   def index(conn, params) do
     user = Guardian.Plug.current_resource(conn)
@@ -34,6 +36,9 @@ defmodule FlowApiWeb.ConversationController do
 
     case Messages.send_message(conversation_id, params) do
       {:ok, message} ->
+        # Reload message with associations if needed
+        Broadcast.broadcast_message_received(user.id, conversation_id, message)
+
         conn
         |> put_status(:created)
         |> json(%{data: message})
@@ -55,10 +60,19 @@ defmodule FlowApiWeb.ConversationController do
         |> json(%{error: %{code: "NOT_FOUND", message: "Conversation not found"}})
 
       conversation ->
-        # TODO: Implement update priority
-        conn
-        |> put_status(:ok)
-        |> json(%{data: conversation})
+        # Update priority
+        case update_conversation_field(conversation, :priority, priority) do
+          {:ok, updated} ->
+            Broadcast.broadcast_conversation_updated(user.id, id, %{priority: priority})
+            conn
+            |> put_status(:ok)
+            |> json(%{data: updated})
+
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        end
     end
   end
 
@@ -72,10 +86,18 @@ defmodule FlowApiWeb.ConversationController do
         |> json(%{error: %{code: "NOT_FOUND", message: "Conversation not found"}})
 
       conversation ->
-        # TODO: Implement archive
-        conn
-        |> put_status(:ok)
-        |> json(%{success: true})
+        case update_conversation_field(conversation, :archived, true) do
+          {:ok, _updated} ->
+            Broadcast.broadcast_conversation_updated(user.id, id, %{archived: true})
+            conn
+            |> put_status(:ok)
+            |> json(%{success: true})
+
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        end
     end
   end
 
@@ -118,5 +140,12 @@ defmodule FlowApiWeb.ConversationController do
     conn
     |> put_status(:ok)
     |> json(%{data: overview})
+  end
+
+  defp update_conversation_field(conversation, field, value) do
+    attrs = Map.new([{field, value}])
+    conversation
+    |> FlowApi.Messages.Conversation.changeset(attrs)
+    |> Repo.update()
   end
 end
