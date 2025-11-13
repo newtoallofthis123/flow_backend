@@ -6,26 +6,45 @@ defmodule FlowApi.Notifications.Notification do
   @foreign_key_type :binary_id
   @derive {Jason.Encoder, except: [:__meta__, :user]}
 
-  schema "notifications" do
-    field :type, :string
-    field :title, :string
-    field :message, :string
-    field :priority, :string, default: "medium"
-    field :read, :boolean, default: false
-    field :action_url, :string
-    field :metadata, :map
-    field :expires_at, :utc_datetime
+  alias FlowApi.Accounts.User
 
-    belongs_to :user, FlowApi.Accounts.User
+  schema "notifications" do
+    field(:type, :string)
+    field(:title, :string)
+    field(:message, :string)
+    field(:priority, :string, default: "medium")
+    field(:read, :boolean, default: false)
+    field(:action_url, :string)
+    field(:metadata, :map)
+    field(:expires_at, :utc_datetime)
+
+    belongs_to(:user, User)
 
     timestamps(type: :utc_datetime, updated_at: false)
   end
 
   def changeset(notification, attrs) do
     notification
-    |> cast(attrs, [:user_id, :type, :title, :message, :priority, :read, :action_url, :metadata, :expires_at])
+    |> cast(attrs, [
+      :user_id,
+      :type,
+      :title,
+      :message,
+      :priority,
+      :read,
+      :action_url,
+      :metadata,
+      :expires_at
+    ])
     |> validate_required([:user_id, :type, :title, :message])
-    |> validate_inclusion(:type, ["deal_update", "message_received", "meeting_reminder", "ai_insight", "task_due", "at_risk_alert"])
+    |> validate_inclusion(:type, [
+      "deal_update",
+      "message_received",
+      "meeting_reminder",
+      "ai_insight",
+      "task_due",
+      "at_risk_alert"
+    ])
     |> validate_inclusion(:priority, ["high", "medium", "low"])
     |> foreign_key_constraint(:user_id)
   end

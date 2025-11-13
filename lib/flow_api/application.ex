@@ -15,6 +15,9 @@ defmodule FlowApi.Application do
       {Oban, Application.fetch_env!(:flow_api, Oban)},
       # Start the Finch HTTP client for HTTP requests
       {Finch, name: FlowApi.Finch},
+      # Session infrastructure
+      {Registry, keys: :unique, name: FlowApi.SessionRegistry},
+      {DynamicSupervisor, strategy: :one_for_one, name: FlowApi.SessionSupervisor},
       # Start to serve requests, typically the last entry
       FlowApiWeb.Endpoint
     ]
