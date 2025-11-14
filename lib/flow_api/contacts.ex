@@ -10,21 +10,24 @@ defmodule FlowApi.Contacts do
 
   # Contact queries
   def list_contacts(user_id, params \\ %{}) do
-    contacts = Contact
-    |> where([c], c.user_id == ^user_id and is_nil(c.deleted_at))
-    |> apply_filters(params)
-    |> apply_search(params)
-    |> apply_sort(params)
-    |> Repo.all()
+    contacts =
+      Contact
+      |> where([c], c.user_id == ^user_id and is_nil(c.deleted_at))
+      |> preload([:communication_events, :ai_insights, :deals])
+      |> apply_filters(params)
+      |> apply_search(params)
+      |> apply_sort(params)
+      |> Repo.all()
 
     preload_tags(contacts)
   end
 
   def get_contact(user_id, id) do
-    contact = Contact
-    |> where([c], c.id == ^id and c.user_id == ^user_id and is_nil(c.deleted_at))
-    |> preload([:communication_events, :ai_insights, :deals])
-    |> Repo.one()
+    contact =
+      Contact
+      |> where([c], c.id == ^id and c.user_id == ^user_id and is_nil(c.deleted_at))
+      |> preload([:communication_events, :ai_insights, :deals])
+      |> Repo.one()
 
     case contact do
       nil -> nil
@@ -70,12 +73,13 @@ defmodule FlowApi.Contacts do
 
     %{
       total: length(contacts),
-      high_value: Enum.count(contacts, fn c ->
-        case Decimal.compare(c.total_deals_value, Decimal.new("50000")) do
-          :gt -> true
-          _ -> false
-        end
-      end),
+      high_value:
+        Enum.count(contacts, fn c ->
+          case Decimal.compare(c.total_deals_value, Decimal.new("50000")) do
+            :gt -> true
+            _ -> false
+          end
+        end),
       at_risk: Enum.count(contacts, &(&1.churn_risk > 60)),
       needs_follow_up: Enum.count(contacts, &(!is_nil(&1.next_follow_up_at)))
     }
@@ -84,20 +88,28 @@ defmodule FlowApi.Contacts do
   # Private helpers
   defp apply_filters(query, %{"filter" => filter}) do
     case filter do
-      "high-value" -> where(query, [c], c.total_deals_value > 50000)
-      "at-risk" -> where(query, [c], c.churn_risk > 60)
+      "high-value" ->
+        where(query, [c], c.total_deals_value > 50000)
+
+      "at-risk" ->
+        where(query, [c], c.churn_risk > 60)
+
       "recent" ->
         seven_days_ago = DateTime.utc_now() |> DateTime.add(-7, :day)
         where(query, [c], c.last_contact_at >= ^seven_days_ago)
-      _ -> query
+
+      _ ->
+        query
     end
   end
+
   defp apply_filters(query, _), do: query
 
   defp apply_search(query, %{"search" => search}) when byte_size(search) > 0 do
     search_pattern = "%#{search}%"
     where(query, [c], ilike(c.name, ^search_pattern) or ilike(c.company, ^search_pattern))
   end
+
   defp apply_search(query, _), do: query
 
   defp apply_sort(query, %{"sort" => "name"}), do: order_by(query, [c], asc: c.name)
