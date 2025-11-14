@@ -60,11 +60,99 @@ defmodule FlowApi.Contacts do
     |> Repo.insert()
   end
 
+  # AI Insights
+  def create_ai_insight(contact_id, attrs) do
+    %AIInsight{contact_id: contact_id}
+    |> AIInsight.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_contact_metrics(contact, communication_sentiment) do
+    # Calculate health score based on sentiment
+    health_adjustment = case communication_sentiment do
+      "positive" -> 5
+      "negative" -> -10
+      _ -> 0
+    end
+
+    new_health_score = min(100, max(0, (contact.health_score || 50) + health_adjustment))
+
+    # Calculate churn risk (inverse of health score with some variance)
+    new_churn_risk = max(0, min(100, 100 - new_health_score + :rand.uniform(20) - 10))
+
+    # Determine relationship health category
+    new_relationship_health = cond do
+      new_health_score >= 70 -> "high"
+      new_health_score >= 40 -> "medium"
+      true -> "low"
+    end
+
+    # Update overall sentiment based on recent communication
+    new_sentiment = case communication_sentiment do
+      "positive" -> "positive"
+      "negative" -> "negative"
+      _ -> contact.sentiment || "neutral"
+    end
+
+    # Calculate next follow-up date based on health score
+    next_follow_up = case new_relationship_health do
+      "high" -> DateTime.utc_now() |> DateTime.add(7, :day)  # Weekly for high health
+      "medium" -> DateTime.utc_now() |> DateTime.add(3, :day)  # Every 3 days for medium
+      "low" -> DateTime.utc_now() |> DateTime.add(1, :day)  # Daily for low health
+    end
+
+    update_contact(contact, %{
+      health_score: new_health_score,
+      churn_risk: new_churn_risk,
+      relationship_health: new_relationship_health,
+      sentiment: new_sentiment,
+      last_contact_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      next_follow_up_at: next_follow_up |> DateTime.truncate(:second)
+    })
+  end
+
   def list_ai_insights(contact_id) do
     AIInsight
     |> where([i], i.contact_id == ^contact_id)
     |> order_by([i], desc: i.inserted_at)
     |> Repo.all()
+  end
+
+  def pretty_print(contact) do
+    tags =
+      contact.tags
+      |> Enum.map(& &1.name)
+      |> Enum.join(", ")
+
+    communication_timeline =
+      if contact.communication_events == [] do
+        "No communication events recorded."
+      else
+        contact.communication_events
+        |> Enum.sort_by(& &1.occurred_at, :desc)
+        |> Enum.map(fn event ->
+          "#{event.occurred_at} - #{event.type} - #{event.subject || "No Subject"} - Sentiment: #{event.sentiment || "N/A"}"
+        end)
+        |> Enum.join("\n")
+      end
+
+    """
+    Name: #{contact.name}
+    Company: #{contact.company}
+    Title: #{contact.title}
+    Email: #{contact.email}
+    Phone: #{contact.phone}
+    Health Score: #{contact.health_score}
+    Churn Risk: #{contact.churn_risk}%
+    Total Deals: #{contact.total_deals_count} (#{contact.total_deals_value})
+    Tags: #{tags}
+    Last Contacted: #{contact.last_contact_at}
+    Next Follow-up: #{contact.next_follow_up_at}
+    Notes: #{contact.notes}
+
+    Communication Timeline:
+    #{communication_timeline}
+    """
   end
 
   # Statistics
