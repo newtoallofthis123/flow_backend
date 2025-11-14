@@ -71,6 +71,7 @@ defmodule FlowApiWeb.ConversationController do
         case update_conversation_field(conversation, :priority, priority) do
           {:ok, updated} ->
             Broadcast.broadcast_conversation_updated(user.id, id, %{priority: priority})
+
             conn
             |> put_status(:ok)
             |> json(%{data: updated})
@@ -96,6 +97,7 @@ defmodule FlowApiWeb.ConversationController do
         case update_conversation_field(conversation, :archived, true) do
           {:ok, _updated} ->
             Broadcast.broadcast_conversation_updated(user.id, id, %{archived: true})
+
             conn
             |> put_status(:ok)
             |> json(%{success: true})
@@ -151,6 +153,7 @@ defmodule FlowApiWeb.ConversationController do
 
   defp update_conversation_field(conversation, field, value) do
     attrs = Map.new([{field, value}])
+
     conversation
     |> FlowApi.Messages.Conversation.changeset(attrs)
     |> Repo.update()

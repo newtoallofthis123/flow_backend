@@ -38,16 +38,47 @@ defmodule FlowApiWeb.ContactController do
   def create(conn, params) do
     user = Guardian.Plug.current_resource(conn)
 
-    case Contacts.create_contact(user.id, params) do
-      {:ok, contact} ->
-        conn
-        |> put_status(:created)
-        |> json(%{data: contact})
-
-      {:error, changeset} ->
+    with {:ok, contact} <- Contacts.create_contact(user.id, params),
+         # Reload contact with associations for AI insight generation
+         full_contact <- Contacts.get_contact(user.id, contact.id),
+         {:ok, insight_params} <-
+           Contacts.generate_ai_insight(full_contact, %{type: :new_contact}),
+         {:ok, _insight} <-
+           Contacts.create_ai_insight(contact.id, %{
+             insight_type: insight_params["insight_type"],
+             title: insight_params["title"],
+             description: insight_params["description"],
+             confidence: parse_confidence(insight_params["confidence"]),
+             actionable: insight_params["actionable"] == "true",
+             suggested_action: insight_params["suggested_action"]
+           }) do
+      conn
+      |> put_status(:created)
+      |> json(%{data: contact})
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{
+          error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}
+        })
+
+      {:error, reason} ->
+        Logger.error("Failed to generate AI insight for new contact: #{inspect(reason)}")
+        # Still return success for contact creation even if insight generation fails
+        case Contacts.create_contact(user.id, params) do
+          {:ok, contact} ->
+            conn
+            |> put_status(:created)
+            |> json(%{data: contact})
+
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{
+              error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}
+            })
+        end
     end
   end
 
@@ -80,7 +111,9 @@ defmodule FlowApiWeb.ContactController do
       {:error, changeset} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{
+          error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}
+        })
     end
   end
 
@@ -124,20 +157,6 @@ defmodule FlowApiWeb.ContactController do
     ```
     """
 
-    insight_prompt = """
-    You are an AI advisor for a CRM system. Based on the communication event and contact context,
-    generate actionable insights to help the salesperson manage the relationship better.
-
-    Provide your response in this format:
-    <insight_type>one of: engagement|risk|opportunity|next_steps</insight_type>
-    <title>A short, compelling title (5-10 words)</title>
-    <description>A detailed insight (20-40 words)</description>
-    <confidence>A number between 0-100 indicating confidence level</confidence>
-    <actionable>true or false</actionable>
-    <suggested_action>If actionable is true, provide a specific action to take (10-20 words), otherwise leave empty</suggested_action>
-    ```
-    """
-
     with user <- Guardian.Plug.current_resource(conn),
          contact when not is_nil(contact) <- Contacts.get_contact(user.id, contact_id),
          {:ok, %{content: classification_content}} <-
@@ -158,41 +177,29 @@ defmodule FlowApiWeb.ContactController do
              model: "mistral:latest",
              temperature: 0.7
            ),
-         classification_params <- Parser.parse_tags(classification_content, ["type", "sentiment", "ai_analysis"]),
+         classification_params <-
+           Parser.parse_tags(classification_content, ["type", "sentiment", "ai_analysis"]),
          Logger.debug("Parsed communication event params: #{inspect(classification_content)}"),
          {:ok, event} <-
            Contacts.add_communication(contact_id, user.id, %{
              subject: subject,
              summary: summary,
-             type: classification_params["type"],
+             type: classification_params["type"] |> String.downcase(),
              occurred_at: Map.get(params, "occurred_at", DateTime.utc_now()),
-             sentiment: classification_params["sentiment"],
+             sentiment: classification_params["sentiment"] |> String.downcase(),
              ai_analysis: classification_params["ai_analysis"]
            }),
-         {:ok, updated_contact} <- Contacts.update_contact_metrics(contact, classification_params["sentiment"]),
-         {:ok, %{content: insight_content}} <-
-           Provider.complete(
-             insight_prompt,
-             [
-               %{
-                 role: :user,
-                 content: """
-                 Recent Communication:
-                 Subject: #{subject}
-                 Summary: #{summary}
-                 Type: #{classification_params["type"]}
-                 Sentiment: #{classification_params["sentiment"]}
-
-                 Contact Info: #{Contacts.pretty_print(contact)}
-                 """
-               }
-             ],
-             provider: :ollama,
-             model: "mistral:latest",
-             temperature: 0.7
-           ),
-         insight_params <- Parser.parse_tags(insight_content, ["insight_type", "title", "description", "confidence", "actionable", "suggested_action"]),
-         Logger.debug("Parsed AI insight params: #{inspect(insight_content)}"),
+         {:ok, updated_contact} <-
+           Contacts.update_contact_metrics(contact, classification_params["sentiment"]),
+         {:ok, insight_params} <-
+           Contacts.generate_ai_insight(contact, %{
+             type: :communication,
+             subject: subject,
+             summary: summary,
+             event_type: classification_params["type"],
+             sentiment: classification_params["sentiment"]
+           }),
+         Logger.debug("Parsed AI insight params: #{inspect(insight_params)}"),
          {:ok, _insight} <-
            Contacts.create_ai_insight(contact_id, %{
              insight_type: insight_params["insight_type"],
@@ -202,7 +209,6 @@ defmodule FlowApiWeb.ContactController do
              actionable: insight_params["actionable"] == "true",
              suggested_action: insight_params["suggested_action"]
            }) do
-
       # Broadcast updates
       old_score = contact.health_score
       new_score = updated_contact.health_score
@@ -238,7 +244,9 @@ defmodule FlowApiWeb.ContactController do
       {:error, changeset} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{
+          error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}
+        })
     end
   end
 
@@ -275,15 +283,26 @@ defmodule FlowApiWeb.ContactController do
     end
   end
 
+  defp translate_changeset_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+  end
+
   defp parse_confidence(nil), do: 75
+
   defp parse_confidence(value) when is_binary(value) do
     # Remove any non-numeric characters (like %, spaces, etc.) and convert to integer
     value
     |> String.replace(~r/[^\d]/, "")
     |> case do
-      "" -> 75  # Default if no numbers found
+      # Default if no numbers found
+      "" -> 75
       cleaned -> String.to_integer(cleaned)
     end
   end
+
   defp parse_confidence(value) when is_integer(value), do: value
 end

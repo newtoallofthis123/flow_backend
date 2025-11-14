@@ -36,15 +36,31 @@ defmodule FlowApi.Contacts do
   end
 
   def create_contact(user_id, attrs) do
-    %Contact{user_id: user_id}
-    |> Contact.changeset(attrs)
-    |> Repo.insert()
+    with {:ok, contact} <- %Contact{user_id: user_id}
+                           |> Contact.changeset(attrs)
+                           |> Repo.insert() do
+      # Preload associations for JSON encoding
+      contact =
+        contact
+        |> Repo.preload([:communication_events, :ai_insights, :deals])
+        |> preload_tags()
+
+      {:ok, contact}
+    end
   end
 
   def update_contact(%Contact{} = contact, attrs) do
-    contact
-    |> Contact.changeset(attrs)
-    |> Repo.update()
+    with {:ok, updated_contact} <- contact
+                                   |> Contact.changeset(attrs)
+                                   |> Repo.update() do
+      # Preload associations for JSON encoding
+      updated_contact =
+        updated_contact
+        |> Repo.preload([:communication_events, :ai_insights, :deals], force: true)
+        |> preload_tags()
+
+      {:ok, updated_contact}
+    end
   end
 
   def delete_contact(%Contact{} = contact) do
@@ -65,6 +81,90 @@ defmodule FlowApi.Contacts do
     %AIInsight{contact_id: contact_id}
     |> AIInsight.changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Generates AI insights for a contact using LLM.
+  Returns {:ok, insight_params} or {:error, reason}
+  """
+  def generate_ai_insight(contact, context \\ %{}) do
+    alias FlowApi.LLM.{Provider, Parser}
+
+    prompt = build_insight_prompt(context)
+    contact_info = pretty_print(contact)
+
+    with {:ok, %{content: content}} <-
+           Provider.complete(
+             prompt,
+             [
+               %{
+                 role: :user,
+                 content: build_insight_context(context, contact_info)
+               }
+             ],
+             provider: :ollama,
+             model: "mistral:latest",
+             temperature: 0.7
+           ),
+         params <- Parser.parse_tags(content, ["insight_type", "title", "description", "confidence", "actionable", "suggested_action"]) do
+      {:ok, params}
+    else
+      error -> error
+    end
+  end
+
+  defp build_insight_prompt(%{type: :new_contact}) do
+    """
+    You are an AI advisor for a CRM system. A new contact has just been added.
+    Based on the contact information, generate actionable insights to help the salesperson
+    start building a relationship with this contact.
+
+    Provide your response in this format:
+    <insight_type>one of: engagement|opportunity|next_steps</insight_type>
+    <title>A short, compelling title (5-10 words)</title>
+    <description>A detailed insight about how to engage with this new contact (20-40 words)</description>
+    <confidence>A number between 0-100 indicating confidence level</confidence>
+    <actionable>true or false</actionable>
+    <suggested_action>If actionable is true, provide a specific first action to take (10-20 words), otherwise leave empty</suggested_action>
+    ```
+    """
+  end
+
+  defp build_insight_prompt(%{type: :communication}) do
+    """
+    You are an AI advisor for a CRM system. Based on the communication event and contact context,
+    generate actionable insights to help the salesperson manage the relationship better.
+
+    Provide your response in this format:
+    <insight_type>one of: engagement|risk|opportunity|next_steps</insight_type>
+    <title>A short, compelling title (5-10 words)</title>
+    <description>A detailed insight (20-40 words)</description>
+    <confidence>A number between 0-100 indicating confidence level</confidence>
+    <actionable>true or false</actionable>
+    <suggested_action>If actionable is true, provide a specific action to take (10-20 words), otherwise leave empty</suggested_action>
+    ```
+    """
+  end
+
+  defp build_insight_context(%{type: :new_contact}, contact_info) do
+    """
+    New Contact Added:
+    #{contact_info}
+
+    Analyze this contact and suggest the best approach for initial outreach and relationship building.
+    """
+  end
+
+  defp build_insight_context(%{type: :communication, subject: subject, summary: summary, event_type: event_type, sentiment: sentiment}, contact_info) do
+    """
+    Recent Communication:
+    Subject: #{subject}
+    Summary: #{summary}
+    Type: #{event_type}
+    Sentiment: #{sentiment}
+
+    Contact Info: #{contact_info}
+    """
   end
 
   def update_contact_metrics(contact, communication_sentiment) do
