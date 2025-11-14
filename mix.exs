@@ -43,7 +43,7 @@ defmodule FlowApi.MixProject do
       # Authentication
       {:guardian, "~> 2.3"},
       {:comeonin, "~> 5.4"},
-      {:bcrypt_elixir, "~> 3.1"},
+      {:bcrypt_elixir, "~> 3.2"},
 
       # CORS
       {:cors_plug, "~> 3.0"},
