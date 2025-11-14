@@ -9,22 +9,24 @@ defmodule FlowApi.Calendar do
   alias FlowApi.Tags.{Tag, Tagging}
 
   def list_events(user_id, params \\ %{}) do
-    events = Event
-    |> where([e], e.user_id == ^user_id)
-    |> apply_calendar_filters(params)
-    |> apply_date_range(params)
-    |> preload([:contact, :deal, :preparation, :outcome, :attendees])
-    |> order_by([e], asc: e.start_time)
-    |> Repo.all()
+    events =
+      Event
+      |> where([e], e.user_id == ^user_id)
+      |> apply_calendar_filters(params)
+      |> apply_date_range(params)
+      |> preload([:contact, :deal, :preparation, :outcome, :attendees])
+      |> order_by([e], asc: e.start_time)
+      |> Repo.all()
 
     preload_tags(events)
   end
 
   def get_event(user_id, id) do
-    event = Event
-    |> where([e], e.id == ^id and e.user_id == ^user_id)
-    |> preload([:contact, :deal, :preparation, :outcome, :insights, :attendees])
-    |> Repo.one()
+    event =
+      Event
+      |> where([e], e.id == ^id and e.user_id == ^user_id)
+      |> preload([:contact, :deal, :preparation, :outcome, :insights, :attendees])
+      |> Repo.one()
 
     case event do
       nil -> nil
@@ -40,7 +42,9 @@ defmodule FlowApi.Calendar do
       {:ok, event} ->
         # TODO: Generate AI meeting preparation
         {:ok, event}
-      error -> error
+
+      error ->
+        error
     end
   end
 
@@ -58,7 +62,9 @@ defmodule FlowApi.Calendar do
       {:ok, outcome} ->
         # TODO: Auto-create follow-up if needed
         {:ok, outcome}
-      error -> error
+
+      error ->
+        error
     end
   end
 
@@ -73,26 +79,47 @@ defmodule FlowApi.Calendar do
       total_this_week: length(events),
       meetings_this_week: Enum.count(events, &(&1.type == "meeting")),
       high_priority_this_week: Enum.count(events, &(&1.priority == "high")),
-      follow_ups_needed: 0 # TODO: Calculate from outcomes
+      # TODO: Calculate from outcomes
+      follow_ups_needed: 0
     }
   end
 
   defp apply_calendar_filters(query, %{"filter" => filter}) do
     case filter do
-      "meetings" -> where(query, [e], e.type == "meeting")
-      "high-priority" -> where(query, [e], e.priority == "high")
+      "meetings" ->
+        where(query, [e], e.type == "meeting")
+
+      "high-priority" ->
+        where(query, [e], e.priority == "high")
+
       "this-week" ->
-        week_start = DateTime.utc_now() |> DateTime.to_date() |> Date.beginning_of_week() |> DateTime.new!(~T[00:00:00])
-        week_end = DateTime.utc_now() |> DateTime.to_date() |> Date.end_of_week() |> DateTime.new!(~T[23:59:59])
+        week_start =
+          DateTime.utc_now()
+          |> DateTime.to_date()
+          |> Date.beginning_of_week()
+          |> DateTime.new!(~T[00:00:00])
+
+        week_end =
+          DateTime.utc_now()
+          |> DateTime.to_date()
+          |> Date.end_of_week()
+          |> DateTime.new!(~T[23:59:59])
+
         where(query, [e], e.start_time >= ^week_start and e.start_time <= ^week_end)
-      _ -> query
+
+      _ ->
+        query
     end
   end
+
   defp apply_calendar_filters(query, _), do: query
 
   defp apply_date_range(query, %{"start" => start_date, "end" => end_date}) do
-    where(query, [e], e.start_time >= ^start_date and e.start_time <= ^end_date)
+    start_datetime = DateTime.new!(start_date, ~T[00:00:00])
+    end_datetime = DateTime.new!(end_date, ~T[23:59:59])
+    where(query, [e], e.start_time >= ^start_datetime and e.start_time <= ^end_datetime)
   end
+
   defp apply_date_range(query, _), do: query
 
   # Preload tags for polymorphic association

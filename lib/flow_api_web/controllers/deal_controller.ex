@@ -80,7 +80,9 @@ defmodule FlowApiWeb.DealController do
 
     with {:ok, deal} <- find_deal(user.id, id) do
       # Soft delete
-      {:ok, _} = Deals.update_deal(deal, %{deleted_at: DateTime.utc_now() |> DateTime.truncate(:second)})
+      {:ok, _} =
+        Deals.update_deal(deal, %{deleted_at: DateTime.utc_now() |> DateTime.truncate(:second)})
+
       conn
       |> put_status(:ok)
       |> json(%{success: true})
@@ -92,7 +94,7 @@ defmodule FlowApiWeb.DealController do
     end
   end
 
-  def update_stage(conn, %{"id" => id, "stage" => stage}) do
+  def update_stage(conn, %{"deal_id" => id, "stage" => stage}) do
     user = Guardian.Plug.current_resource(conn)
 
     with {:ok, deal} <- find_deal(user.id, id),
@@ -165,8 +167,18 @@ defmodule FlowApiWeb.DealController do
   defp extract_changes(_old_deal, _new_deal, params) do
     # Return params as changes - the frontend will handle partial updates
     # Filter out any non-deal fields if needed
-    Map.take(params, ["title", "company", "value", "stage", "probability",
-                       "confidence", "expectedCloseDate", "description", "priority",
-                       "competitorMentioned", "contactId"])
+    Map.take(params, [
+      "title",
+      "company",
+      "value",
+      "stage",
+      "probability",
+      "confidence",
+      "expectedCloseDate",
+      "description",
+      "priority",
+      "competitorMentioned",
+      "contactId"
+    ])
   end
 end
