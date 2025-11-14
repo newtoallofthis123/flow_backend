@@ -18,6 +18,8 @@ defmodule FlowApi.Application do
       # Session infrastructure
       {Registry, keys: :unique, name: FlowApi.SessionRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: FlowApi.SessionSupervisor},
+      # Search cache
+      FlowApi.Search.Cache,
       # Start to serve requests, typically the last entry
       FlowApiWeb.Endpoint
     ]

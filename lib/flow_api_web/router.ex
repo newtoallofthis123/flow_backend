@@ -80,6 +80,7 @@ defmodule FlowApiWeb.Router do
 
     # Search
     get("/search", SearchController, :search)
+    post("/search/natural-language", SearchController, :natural_language)
 
     # Tags
     resources("/tags", TagController, only: [:index, :create, :delete])
