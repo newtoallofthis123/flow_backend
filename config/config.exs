@@ -45,6 +45,23 @@ config :flow_api, Oban,
   plugins: [Oban.Plugins.Pruner],
   queues: [default: 10, reminders: 5]
 
+# LLM Provider Configuration
+config :flow_api, FlowApi.LLM,
+  default_provider: :ollama,
+  providers: %{
+    ollama: %{
+      base_url: "http://localhost:11434",
+      default_model: "llama3.2:latest",
+      timeout: 60_000
+    },
+    gemini: %{
+      api_key: {:system, "GEMINI_API_KEY"},
+      default_model: "gemini-1.5-flash",
+      base_url: "https://generativelanguage.googleapis.com/v1beta",
+      timeout: 30_000
+    }
+  }
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

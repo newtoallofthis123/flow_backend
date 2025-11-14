@@ -65,6 +65,23 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  # LLM Provider - Production
+  config :flow_api, FlowApi.LLM,
+    default_provider: :gemini,
+    providers: %{
+      ollama: %{
+        base_url: System.get_env("OLLAMA_BASE_URL") || "http://localhost:11434",
+        default_model: "llama3.2:latest",
+        timeout: 60_000
+      },
+      gemini: %{
+        api_key: System.fetch_env!("GEMINI_API_KEY"),
+        default_model: System.get_env("GEMINI_MODEL") || "gemini-1.5-flash",
+        base_url: "https://generativelanguage.googleapis.com/v1beta",
+        timeout: 30_000
+      }
+    }
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key
