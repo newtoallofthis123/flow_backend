@@ -35,12 +35,12 @@ defmodule FlowApi.Accounts do
     user = get_user_by_email(email)
 
     cond do
-      user && Bcrypt.verify_pass(password, user.password_hash) ->
+      user && Pbkdf2.verify_pass(password, user.password_hash) ->
         {:ok, user}
       user ->
         {:error, :unauthorized}
       true ->
-        Bcrypt.no_user_verify()
+        Pbkdf2.no_user_verify()
         {:error, :unauthorized}
     end
   end
