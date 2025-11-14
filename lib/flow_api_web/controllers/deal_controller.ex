@@ -5,6 +5,8 @@ defmodule FlowApiWeb.DealController do
   alias FlowApi.Guardian
   alias FlowApiWeb.Channels.Broadcast
 
+  require Logger
+
   def index(conn, params) do
     user = Guardian.Plug.current_resource(conn)
     deals = Deals.list_deals(user.id, params)
@@ -33,20 +35,53 @@ defmodule FlowApiWeb.DealController do
   def create(conn, params) do
     user = Guardian.Plug.current_resource(conn)
 
-    case Deals.create_deal(user.id, params) do
-      {:ok, deal} ->
-        # Reload with associations for broadcast
-        deal = Deals.get_deal(user.id, deal.id)
-        Broadcast.broadcast_deal_created(user.id, deal)
+    with {:ok, deal} <- Deals.create_deal(user.id, params),
+         # Reload with full associations for AI analysis
+         full_deal <- Deals.get_deal(user.id, deal.id),
+         {:ok, analysis} <- Deals.analyze_deal_with_ai(full_deal, %{type: :new_deal}),
+         # Update deal with AI predictions
+         {:ok, updated_deal} <-
+           Deals.update_deal(full_deal, %{
+             probability: parse_int(analysis["probability"], 50),
+             confidence: String.downcase(analysis["confidence"] || "medium"),
+             priority: String.downcase(analysis["priority"] || "medium")
+           }),
+         # Create insight from AI analysis
+         {:ok, _insight} <-
+           Deals.create_deal_insight(deal.id, %{
+             insight_type: analysis["insight_type"],
+             title: analysis["insight_title"],
+             description: analysis["insight_description"],
+             severity: map_insight_severity(analysis["insight_type"]),
+             suggested_action: analysis["suggested_action"]
+           }) do
+      Broadcast.broadcast_deal_created(user.id, updated_deal)
 
-        conn
-        |> put_status(:created)
-        |> json(%{data: deal})
-
-      {:error, changeset} ->
+      conn
+      |> put_status(:created)
+      |> json(%{data: updated_deal})
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}})
+
+      {:error, reason} ->
+        Logger.error("Failed to analyze deal with AI: #{inspect(reason)}")
+        # Still return success even if AI analysis fails
+        with {:ok, deal} <- Deals.create_deal(user.id, params),
+             full_deal <- Deals.get_deal(user.id, deal.id) do
+          Broadcast.broadcast_deal_created(user.id, full_deal)
+
+          conn
+          |> put_status(:created)
+          |> json(%{data: full_deal})
+        else
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}})
+        end
     end
   end
 
@@ -71,7 +106,7 @@ defmodule FlowApiWeb.DealController do
       {:error, changeset} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{error: %{code: "VALIDATION_ERROR", details: translate_changeset_errors(changeset)}})
     end
   end
 
@@ -98,7 +133,31 @@ defmodule FlowApiWeb.DealController do
     user = Guardian.Plug.current_resource(conn)
 
     with {:ok, deal} <- find_deal(user.id, id),
-         {:ok, updated} <- Deals.update_stage(deal, stage) do
+         old_stage = deal.stage,
+         {:ok, stage_updated} <- Deals.update_stage(deal, stage),
+         # Reload for AI analysis
+         full_deal <- Deals.get_deal(user.id, stage_updated.id),
+         {:ok, analysis} <-
+           Deals.analyze_deal_with_ai(full_deal, %{
+             type: :stage_change,
+             old_stage: old_stage,
+             new_stage: stage
+           }),
+         # Update probability based on AI analysis
+         {:ok, updated} <-
+           Deals.update_deal(full_deal, %{
+             probability: parse_int(analysis["probability"], full_deal.probability),
+             confidence: String.downcase(analysis["confidence"] || full_deal.confidence)
+           }),
+         # Create insight
+         {:ok, _insight} <-
+           Deals.create_deal_insight(id, %{
+             insight_type: analysis["insight_type"],
+             title: analysis["insight_title"],
+             description: analysis["insight_description"],
+             severity: map_insight_severity(analysis["insight_type"]),
+             suggested_action: analysis["suggested_action"]
+           }) do
       Broadcast.broadcast_deal_stage_changed(user.id, id, updated.stage, updated.probability)
 
       conn
@@ -109,6 +168,23 @@ defmodule FlowApiWeb.DealController do
         conn
         |> put_status(:not_found)
         |> json(%{error: %{code: "NOT_FOUND", message: "Deal not found"}})
+
+      {:error, reason} ->
+        Logger.error("Failed to analyze stage change with AI: #{inspect(reason)}")
+        # Fall back to simple stage update
+        with {:ok, deal} <- find_deal(user.id, id),
+             {:ok, updated} <- Deals.update_stage(deal, stage) do
+          Broadcast.broadcast_deal_stage_changed(user.id, id, updated.stage, updated.probability)
+
+          conn
+          |> put_status(:ok)
+          |> json(%{data: updated})
+        else
+          {:error, :not_found} ->
+            conn
+            |> put_status(:not_found)
+            |> json(%{error: %{code: "NOT_FOUND", message: "Deal not found"}})
+        end
     end
   end
 
@@ -116,7 +192,32 @@ defmodule FlowApiWeb.DealController do
     user = Guardian.Plug.current_resource(conn)
 
     with {:ok, deal} <- find_deal(user.id, id),
-         {:ok, activity} <- Deals.add_activity(deal.id, user.id, params) do
+         {:ok, activity} <- Deals.add_activity(deal.id, user.id, params),
+         # Reload deal for AI analysis
+         full_deal <- Deals.get_deal(user.id, id),
+         {:ok, analysis} <-
+           Deals.analyze_deal_with_ai(full_deal, %{
+             type: :activity_added,
+             activity_type: params["activity_type"] || "note",
+             activity_notes: params["notes"] || ""
+           }),
+         # Adjust probability based on AI analysis
+         probability_change = parse_int(analysis["probability_change"], 0),
+         new_probability = min(100, max(0, deal.probability + probability_change)),
+         {:ok, _updated_deal} <-
+           Deals.update_deal(full_deal, %{
+             probability: new_probability,
+             last_activity_at: DateTime.utc_now() |> DateTime.truncate(:second)
+           }),
+         # Create insight
+         {:ok, _insight} <-
+           Deals.create_deal_insight(id, %{
+             insight_type: analysis["insight_type"],
+             title: analysis["insight_title"],
+             description: analysis["insight_description"],
+             severity: map_insight_severity(analysis["insight_type"]),
+             suggested_action: analysis["suggested_action"]
+           }) do
       Broadcast.broadcast_deal_activity_added(user.id, deal.id, activity)
 
       conn
@@ -127,6 +228,23 @@ defmodule FlowApiWeb.DealController do
         conn
         |> put_status(:not_found)
         |> json(%{error: %{code: "NOT_FOUND", message: "Deal not found"}})
+
+      {:error, reason} ->
+        Logger.error("Failed to analyze activity with AI: #{inspect(reason)}")
+        # Fall back to simple activity creation
+        with {:ok, deal} <- find_deal(user.id, id),
+             {:ok, activity} <- Deals.add_activity(deal.id, user.id, params) do
+          Broadcast.broadcast_deal_activity_added(user.id, deal.id, activity)
+
+          conn
+          |> put_status(:created)
+          |> json(%{data: activity})
+        else
+          {:error, :not_found} ->
+            conn
+            |> put_status(:not_found)
+            |> json(%{error: %{code: "NOT_FOUND", message: "Deal not found"}})
+        end
     end
   end
 
@@ -181,4 +299,31 @@ defmodule FlowApiWeb.DealController do
       "contactId"
     ])
   end
+
+  defp translate_changeset_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+  end
+
+  defp parse_int(nil, default), do: default
+  defp parse_int(value, default) when is_binary(value) do
+    value
+    |> String.replace(~r/[^\d-]/, "")
+    |> case do
+      "" -> default
+      "-" -> default
+      cleaned -> String.to_integer(cleaned)
+    end
+  end
+  defp parse_int(value, _default) when is_integer(value), do: value
+
+  defp map_insight_severity("risk"), do: "high"
+  defp map_insight_severity("action_required"), do: "high"
+  defp map_insight_severity("opportunity"), do: "medium"
+  defp map_insight_severity("positive_signal"), do: "low"
+  defp map_insight_severity("momentum"), do: "medium"
+  defp map_insight_severity(_), do: "medium"
 end

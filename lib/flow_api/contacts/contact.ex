@@ -4,7 +4,7 @@ defmodule FlowApi.Contacts.Contact do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
-  @derive {Jason.Encoder, except: [:__meta__, :user, :conversations]}
+  @derive {Jason.Encoder, except: [:__meta__, :user, :conversations, :deals]}
 
   schema "contacts" do
     field(:name, :string)

@@ -4,7 +4,7 @@ defmodule FlowApi.Deals.Deal do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
-  @derive {Jason.Encoder, except: [:__meta__, :user, :contact, :activities, :insights, :signals]}
+  @derive {Jason.Encoder, except: [:__meta__, :user, :contact]}
 
   schema "deals" do
     field :title, :string

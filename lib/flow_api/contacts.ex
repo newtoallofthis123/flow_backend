@@ -13,7 +13,7 @@ defmodule FlowApi.Contacts do
     contacts =
       Contact
       |> where([c], c.user_id == ^user_id and is_nil(c.deleted_at))
-      |> preload([:communication_events, :ai_insights, :deals])
+      |> preload([:communication_events, :ai_insights])
       |> apply_filters(params)
       |> apply_search(params)
       |> apply_sort(params)
@@ -26,7 +26,7 @@ defmodule FlowApi.Contacts do
     contact =
       Contact
       |> where([c], c.id == ^id and c.user_id == ^user_id and is_nil(c.deleted_at))
-      |> preload([:communication_events, :ai_insights, :deals])
+      |> preload([:communication_events, :ai_insights])
       |> Repo.one()
 
     case contact do
@@ -42,7 +42,7 @@ defmodule FlowApi.Contacts do
       # Preload associations for JSON encoding
       contact =
         contact
-        |> Repo.preload([:communication_events, :ai_insights, :deals])
+        |> Repo.preload([:communication_events, :ai_insights])
         |> preload_tags()
 
       {:ok, contact}
@@ -56,7 +56,7 @@ defmodule FlowApi.Contacts do
       # Preload associations for JSON encoding
       updated_contact =
         updated_contact
-        |> Repo.preload([:communication_events, :ai_insights, :deals], force: true)
+        |> Repo.preload([:communication_events, :ai_insights], force: true)
         |> preload_tags()
 
       {:ok, updated_contact}

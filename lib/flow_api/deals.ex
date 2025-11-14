@@ -12,7 +12,7 @@ defmodule FlowApi.Deals do
     deals = Deal
     |> where([d], d.user_id == ^user_id and is_nil(d.deleted_at))
     |> apply_deal_filters(params)
-    |> preload([:contact, :activities, :insights, :signals])
+    |> preload([:activities, :insights, :signals])
     |> Repo.all()
 
     preload_tags(deals)
@@ -21,7 +21,7 @@ defmodule FlowApi.Deals do
   def get_deal(user_id, id) do
     deal = Deal
     |> where([d], d.id == ^id and d.user_id == ^user_id and is_nil(d.deleted_at))
-    |> preload([:contact, :activities, :insights, :signals])
+    |> preload([:activities, :insights, :signals])
     |> Repo.one()
 
     case deal do
@@ -31,32 +31,44 @@ defmodule FlowApi.Deals do
   end
 
   def create_deal(user_id, attrs) do
-    %Deal{user_id: user_id}
-    |> Deal.changeset(attrs)
-    |> Repo.insert()
-    |> case do
-      {:ok, deal} ->
-        # TODO: Trigger AI probability calculation
-        {:ok, deal}
-      error -> error
+    with {:ok, deal} <- %Deal{user_id: user_id}
+                        |> Deal.changeset(attrs)
+                        |> Repo.insert() do
+      # Preload associations for JSON encoding and AI analysis
+      deal =
+        deal
+        |> Repo.preload([:activities, :insights, :signals])
+        |> preload_tags()
+
+      {:ok, deal}
     end
   end
 
   def update_deal(%Deal{} = deal, attrs) do
-    deal
-    |> Deal.changeset(attrs)
-    |> Repo.update()
+    with {:ok, updated_deal} <- deal
+                                |> Deal.changeset(attrs)
+                                |> Repo.update() do
+      # Preload associations for JSON encoding
+      updated_deal =
+        updated_deal
+        |> Repo.preload([:activities, :insights, :signals], force: true)
+        |> preload_tags()
+
+      {:ok, updated_deal}
+    end
   end
 
   def update_stage(%Deal{} = deal, stage) do
-    deal
-    |> Deal.changeset(%{stage: stage})
-    |> Repo.update()
-    |> case do
-      {:ok, deal} ->
-        # TODO: Recalculate probability
-        {:ok, deal}
-      error -> error
+    with {:ok, updated_deal} <- deal
+                                |> Deal.changeset(%{stage: stage})
+                                |> Repo.update() do
+      # Preload associations
+      updated_deal =
+        updated_deal
+        |> Repo.preload([:activities, :insights, :signals], force: true)
+        |> preload_tags()
+
+      {:ok, updated_deal}
     end
   end
 
@@ -64,12 +76,177 @@ defmodule FlowApi.Deals do
     %Activity{deal_id: deal_id, user_id: user_id}
     |> Activity.changeset(attrs)
     |> Repo.insert()
-    |> case do
-      {:ok, activity} ->
-        # TODO: Trigger AI insight generation
-        {:ok, activity}
+  end
+
+  # AI-powered deal analysis
+  def create_deal_insight(deal_id, attrs) do
+    %Insight{deal_id: deal_id}
+    |> Insight.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Analyzes a deal using AI to calculate probability, confidence, and generate insights.
+  Returns {:ok, analysis_results} or {:error, reason}
+  """
+  def analyze_deal_with_ai(deal, context \\ %{}) do
+    alias FlowApi.LLM.{Provider, Parser}
+
+    prompt = build_deal_analysis_prompt(context)
+    deal_info = pretty_print_deal(deal)
+
+    with {:ok, %{content: content}} <-
+           Provider.complete(
+             prompt,
+             [
+               %{
+                 role: :user,
+                 content: build_deal_context(context, deal_info)
+               }
+             ],
+             provider: :ollama,
+             model: "mistral:latest",
+             temperature: 0.7
+           ),
+         params <- Parser.parse_tags(content, get_expected_tags(context)) do
+      {:ok, params}
+    else
       error -> error
     end
+  end
+
+  defp build_deal_analysis_prompt(%{type: :new_deal}) do
+    """
+    You are an AI sales advisor analyzing a new deal. Based on the deal information,
+    provide an analysis to help predict the likelihood of closing.
+
+    Provide your response in this format:
+    <probability>A number between 0-100 indicating win probability</probability>
+    <confidence>one of: high|medium|low - your confidence in this assessment</confidence>
+    <priority>one of: high|medium|low - suggested priority level</priority>
+    <insight_type>one of: opportunity|risk|action_required</insight_type>
+    <insight_title>A short, compelling title (5-10 words)</insight_title>
+    <insight_description>Detailed analysis and recommendations (30-50 words)</insight_description>
+    <suggested_action>Specific next steps to move the deal forward (15-25 words)</suggested_action>
+    ```
+    """
+  end
+
+  defp build_deal_analysis_prompt(%{type: :stage_change}) do
+    """
+    You are an AI sales advisor. A deal has moved to a new stage.
+    Analyze the deal progression and provide updated probability and recommendations.
+
+    Provide your response in this format:
+    <probability>A number between 0-100 indicating updated win probability</probability>
+    <confidence>one of: high|medium|low - your confidence in this assessment</confidence>
+    <insight_type>one of: opportunity|risk|action_required|momentum</insight_type>
+    <insight_title>A short, compelling title (5-10 words)</insight_title>
+    <insight_description>Analysis of the stage progression and what it means (30-50 words)</insight_description>
+    <suggested_action>Specific next steps for this stage (15-25 words)</suggested_action>
+    ```
+    """
+  end
+
+  defp build_deal_analysis_prompt(%{type: :activity_added}) do
+    """
+    You are an AI sales advisor. A new activity has been logged for a deal.
+    Analyze how this activity impacts the deal and provide recommendations.
+
+    Provide your response in this format:
+    <probability_change>A number between -20 to +20 indicating probability adjustment</probability_change>
+    <insight_type>one of: opportunity|risk|action_required|positive_signal</insight_type>
+    <insight_title>A short, compelling title (5-10 words)</insight_title>
+    <insight_description>Analysis of the activity's impact on the deal (30-50 words)</insight_description>
+    <suggested_action>Recommended follow-up actions (15-25 words)</suggested_action>
+    ```
+    """
+  end
+
+  defp build_deal_context(%{type: :new_deal}, deal_info) do
+    """
+    New Deal Created:
+    #{deal_info}
+
+    Analyze this deal and provide an initial probability assessment and recommendations.
+    """
+  end
+
+  defp build_deal_context(%{type: :stage_change, old_stage: old_stage, new_stage: new_stage}, deal_info) do
+    """
+    Deal Stage Changed:
+    Previous Stage: #{old_stage}
+    New Stage: #{new_stage}
+
+    Deal Information:
+    #{deal_info}
+
+    Analyze this progression and update the probability assessment.
+    """
+  end
+
+  defp build_deal_context(%{type: :activity_added, activity_type: activity_type, activity_notes: notes}, deal_info) do
+    """
+    New Activity Added:
+    Type: #{activity_type}
+    Notes: #{notes}
+
+    Deal Information:
+    #{deal_info}
+
+    Analyze how this activity affects the deal's likelihood of closing.
+    """
+  end
+
+  defp get_expected_tags(%{type: :new_deal}), do: ["probability", "confidence", "priority", "insight_type", "insight_title", "insight_description", "suggested_action"]
+  defp get_expected_tags(%{type: :stage_change}), do: ["probability", "confidence", "insight_type", "insight_title", "insight_description", "suggested_action"]
+  defp get_expected_tags(%{type: :activity_added}), do: ["probability_change", "insight_type", "insight_title", "insight_description", "suggested_action"]
+
+  defp pretty_print_deal(deal) do
+    # Load contact only for AI analysis if contact_id exists
+    contact_info = if deal.contact_id do
+      contact = Repo.get(FlowApi.Contacts.Contact, deal.contact_id)
+      if contact do
+        """
+        Contact: #{contact.name} (#{contact.company || "N/A"})
+        Contact Health Score: #{contact.health_score}
+        Contact Sentiment: #{contact.sentiment}
+        """
+      else
+        "No contact information available"
+      end
+    else
+      "No contact associated"
+    end
+
+    recent_activities = if deal.activities && length(deal.activities) > 0 do
+      deal.activities
+      |> Enum.take(5)
+      |> Enum.map(fn activity ->
+        "#{activity.activity_type} - #{activity.notes || "No notes"}"
+      end)
+      |> Enum.join("\n")
+    else
+      "No activities recorded"
+    end
+
+    """
+    Title: #{deal.title}
+    Company: #{deal.company}
+    Value: $#{Decimal.to_string(deal.value || Decimal.new("0"))}
+    Stage: #{deal.stage}
+    Current Probability: #{deal.probability}%
+    Confidence: #{deal.confidence}
+    Priority: #{deal.priority}
+    Expected Close Date: #{deal.expected_close_date}
+    Description: #{deal.description || "No description"}
+    Competitor Mentioned: #{deal.competitor_mentioned || "None"}
+
+    #{contact_info}
+
+    Recent Activities:
+    #{recent_activities}
+    """
   end
 
   def get_forecast(user_id) do
