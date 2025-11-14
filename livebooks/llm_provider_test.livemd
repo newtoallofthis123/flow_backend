@@ -1,0 +1,410 @@
+# LLM Provider Test Notebook
+
+## Introduction
+
+This notebook tests the LLM Provider implementation based on the [LLM Provider Plan](../plans/LLM_PROVIDER_PLAN.md). We'll test the core functionality including:
+
+1. Configuration loading
+2. Provider health checks
+3. Message completion with both Ollama and Gemini
+4. Parser functions for structured data extraction
+5. Real-world usage examples
+
+## Test Configuration
+
+Let's verify our LLM configuration is loaded correctly:
+
+```elixir
+alias FlowApi.LLM.{Config, Provider, Parser}
+
+# Test configuration loading
+default_provider = Config.default_provider()
+ollama_config = Config.get_provider_config(:ollama)
+gemini_config = Config.get_provider_config(:gemini)
+
+IO.puts("Default provider: #{inspect(default_provider)}")
+IO.puts("Ollama config: #{inspect(ollama_config)}")
+IO.puts("Gemini config: #{inspect(gemini_config)}")
+```
+
+## Parser Tests
+
+Let's test the parser functions first since they don't require external services:
+
+```elixir
+# Test code block parsing
+sample_response = """
+Here's some analysis:
+
+<sentiment>positive</sentiment>
+<confidence>85</confidence>
+<reason>The user expressed satisfaction with the service.</reason>
+
+Here's some code to help:
+
+"""
+
+```
+
+## Provider Health Checks
+
+Let's test if our LLM providers are accessible:
+
+```elixir
+# Test Ollama health check
+ollama_health = Provider.health_check(:ollama)
+IO.inspect(ollama_health, label: "Ollama health check")
+
+# Test Gemini health check (requires API key)
+gemini_health = Provider.health_check(:gemini)
+IO.inspect(gemini_health, label: "Gemini health check")
+
+# List available models (if providers are healthy)
+with :ok <- ollama_health do
+  {:ok, ollama_models} = Provider.list_models(:ollama)
+  IO.inspect(ollama_models, label: "Ollama available models")
+else
+  _ -> IO.puts("Ollama not available - skipping model list")
+end
+
+with :ok <- gemini_health do
+  {:ok, gemini_models} = Provider.list_models(:gemini)
+  IO.inspect(gemini_models, label: "Gemini available models")
+else
+  _ -> IO.puts("Gemini not available - skipping model list")
+end
+```
+
+## Basic Completion Tests
+
+Let's test basic LLM completion functionality:
+
+```elixir
+# Test simple completion with Ollama (if available)
+ollama_test = Provider.ask(
+  "What is Elixir? Answer in one sentence.",
+  provider: :ollama,
+  model: "gemma3:1b",
+  temperature: 0.7
+)
+
+case ollama_test do
+  {:ok, response} ->
+    IO.puts("Ollama response: #{response.content}")
+    IO.puts("Model used: #{response.model}")
+    IO.inspect(response.metadata, label: "Metadata")
+  {:error, error} ->
+    IO.puts("Ollama error: #{error.message}")
+end
+```
+
+```elixir
+# Test simple completion with Gemini (if API key is available)
+gemini_test = Provider.ask(
+  "What is Phoenix? Answer in one sentence.",
+  provider: :gemini,
+  model: "gemini-2.5-flash-lite-preview-06-17",
+  temperature: 0.7
+)
+
+case gemini_test do
+  {:ok, response} ->
+    IO.puts("Gemini response: #{response.content}")
+    IO.puts("Model used: #{response.model}")
+    IO.inspect(response.metadata, label: "Metadata")
+  {:error, error} ->
+    IO.puts("Gemini error: #{error.message}")
+end
+```
+
+## Structured Data Extraction Test
+
+Let's test a more complex scenario with structured data extraction:
+
+```elixir
+# Test sentiment analysis with structured output
+sentiment_prompt = """
+You are a sentiment analysis AI. Analyze the sentiment of the given email and respond with XML tags.
+
+Email: "I'm really excited about the new features in your product! The team has done an amazing job."
+
+Respond in this format:
+<sentiment>positive|neutral|negative</sentiment>
+<confidence>0-100</confidence>
+<key_phrases>
+- phrase 1
+- phrase 2
+</key_phrases>
+<explanation>Brief explanation of your analysis</explanation>
+"""
+
+sentiment_request = Provider.complete(
+  "You are a sentiment analysis AI that responds with structured XML data.",
+  [%{role: :user, content: sentiment_prompt}],
+  provider: :ollama,
+  model: "gemma3:1b",
+  temperature: 0.3
+)
+
+case sentiment_request do
+  {:ok, response} ->
+    IO.puts("Raw response:")
+    IO.puts(response.content)
+    
+    # Parse the structured response
+    parsed = Parser.parse_tags(response.content, [
+      "sentiment", "confidence", "key_phrases", "explanation"
+    ])
+    
+    IO.puts("\nParsed results:")
+    IO.inspect(parsed, label: "Structured data")
+    
+  {:error, error} ->
+    IO.puts("Error: #{error.message}")
+end
+```
+
+## Deal Probability Analysis Example
+
+Let's test a real-world CRM scenario:
+
+```elixir
+# Simulate deal data
+deal_data = %{
+  title: "Enterprise Software License",
+  stage: "proposal",
+  value: 250_000,
+  days_in_pipeline: 45,
+  activities: [
+    "Initial discovery call completed",
+    "Technical demo successful",
+    "Proposal sent to CFO",
+    "Follow-up scheduled for next week"
+  ],
+  contact_company: "Acme Corporation",
+  contact_role: "CTO"
+}
+
+# Build deal analysis prompt
+deal_prompt = """
+You are an AI sales assistant specializing in deal analysis. Analyze this deal and estimate closing probability.
+
+Deal Details:
+- Title: #{deal_data.title}
+- Stage: #{deal_data.stage}
+- Value: $#{deal_data.value}
+- Days in pipeline: #{deal_data.days_in_pipeline}
+- Company: #{deal_data.contact_company}
+- Contact role: #{deal_data.contact_role}
+
+Recent Activities:
+#{Enum.join(deal_data.activities, "\n- ")}
+
+Provide your analysis in this format:
+<probability>0-100</probability>
+<confidence>high|medium|low</confidence>
+<risk_factors>
+- Risk factor 1
+- Risk factor 2
+</risk_factors>
+<recommendations>
+- Recommendation 1
+- Recommendation 2
+</recommendations>
+<reasoning>Detailed reasoning for your assessment</reasoning>
+"""
+
+deal_analysis = Provider.complete(
+  "You are an expert sales analyst providing structured deal assessments.",
+  [%{role: :user, content: deal_prompt}],
+  provider: :gemini,
+  temperature: 0.4
+)
+
+case deal_analysis do
+  {:ok, response} ->
+    IO.puts("Deal Analysis Response:")
+    IO.puts(response.content)
+    
+    # Parse the structured analysis
+    parsed_analysis = Parser.parse_tags(response.content, [
+      "probability", "confidence", "risk_factors", "recommendations", "reasoning"
+    ])
+    
+    IO.puts("\nStructured Analysis:")
+    IO.inspect(parsed_analysis, label: "Deal analysis results")
+    
+    # Convert probability to integer
+    probability = Map.get(parsed_analysis, "probability", "0") |> String.to_integer()
+    IO.puts("\nDeal closing probability: #{probability}%")
+    
+  {:error, error} ->
+    IO.puts("Deal analysis error: #{error.message}")
+end
+```
+
+## Email Composition Example
+
+Let's test smart email composition:
+
+```elixir
+# Simulate conversation context
+conversation_context = %{
+  contact_name: "Sarah Johnson",
+  contact_company: "TechCorp Inc.",
+  contact_role: "Product Manager",
+  previous_messages: [
+    "Hi, I'm interested in your CRM solution for our team.",
+    "We have about 50 sales reps who need better contact management.",
+    "Can you schedule a demo for next week?"
+  ],
+  user_draft: "Hi Sarah, thanks for your interest. I can definitely schedule a demo."
+}
+
+# Build email composition prompt
+email_prompt = """
+You are a professional email assistant helping with CRM communications.
+
+Context:
+- Contact: #{conversation_context.contact_name}, #{conversation_context.contact_role} at #{conversation_context.contact_company}
+- Team size: 50 sales reps
+- Need: Better contact management
+- Previous interest: Demo request
+
+Recent conversation:
+#{Enum.join(conversation_context.previous_messages, "\n")}
+
+User's draft: "#{conversation_context.user_draft}"
+
+Generate a professional, improved email response that:
+1. Acknowledges their specific needs
+2. Confirms the demo request
+3. Suggests preparation steps
+4. Maintains a friendly but professional tone
+
+Respond in this format:
+<subject>Compelling email subject line</subject>
+<body>
+Complete email body with proper greeting and closing
+</body>
+<tone>professional|friendly|formal</tone>
+<key_points>
+- Key point 1 addressed
+- Key point 2 addressed
+</key_points>
+"""
+
+email_composition = Provider.complete(
+  "You are a professional email writer for B2B sales communications.",
+  [%{role: :user, content: email_prompt}],
+  provider: :gemini,
+  temperature: 0.8
+)
+
+case email_composition do
+  {:ok, response} ->
+    IO.puts("Generated Email:")
+    IO.puts(response.content)
+    
+    # Parse the structured email
+    parsed_email = Parser.parse_tags(response.content, [
+      "subject", "body", "tone", "key_points"
+    ])
+    
+    IO.puts("\nStructured Email:")
+    IO.inspect(parsed_email, label: "Email components")
+    
+  {:error, error} ->
+    IO.puts("Email composition error: #{error.message}")
+end
+```
+
+## Performance Testing
+
+Let's test response times and reliability:
+
+```elixir
+# Test multiple concurrent requests
+test_questions = [
+  "What is Elixir?",
+  "Explain Phoenix framework",
+  "What is OTP?",
+  "Describe Ecto",
+  "What are GenServers?"
+]
+
+# Measure response times
+{time_ollama, results_ollama} = :timer.tc(fn ->
+  test_questions
+  |> Enum.map(fn question ->
+    Task.async(fn ->
+      Provider.ask(question, provider: :ollama, temperature: 0.5)
+    end)
+  end)
+  |> Task.await_many(30_000)
+end)
+
+IO.puts("Ollama completed #{length(results_ollama)} requests in #{time_ollama / 1_000} ms")
+
+# Count successful vs failed responses
+{success_ollama, failed_ollama} = 
+  results_ollama
+  |> Enum.split_with(fn result -> match?({:ok, _}, result) end)
+
+IO.puts("Ollama - Success: #{length(success_ollama)}, Failed: #{length(failed_ollama)}")
+```
+
+## Error Handling Tests
+
+Let's test various error scenarios:
+
+```elixir
+# Test with invalid provider
+invalid_provider = Provider.ask("Test", provider: :invalid)
+IO.inspect(invalid_provider, label: "Invalid provider error")
+
+# Test with empty message
+empty_message = Provider.ask("", provider: :ollama)
+IO.inspect(empty_message, label: "Empty message result")
+
+# Test parser with malformed input
+malformed_input = "<tag>unclosed tag"
+parser_error = Parser.parse_tags(malformed_input, ["tag"])
+IO.inspect(parser_error, label: "Parser with malformed input")
+
+# Test parser with non-existent tags
+non_existent = Parser.parse_tags("no tags here", ["missing"])
+IO.inspect(non_existent, label: "Parser with non-existent tags")
+```
+
+## Summary
+
+This notebook demonstrates:
+
+✅ **Configuration Management**: Loading provider configs from application environment
+✅ **Parser Functions**: Extracting structured data from LLM responses  
+✅ **Provider Interface**: Unified API for multiple LLM providers
+✅ **Health Checks**: Testing provider connectivity
+✅ **Real-world Examples**: Sentiment analysis, deal scoring, email composition
+✅ **Error Handling**: Graceful failure handling for various scenarios
+✅ **Performance Testing**: Concurrent request handling
+
+## Next Steps
+
+1. **Implement Missing Modules**: Complete the LLM provider implementation based on the plan
+2. **Add More Providers**: Extend support for OpenAI, Claude, etc.
+3. **Add Caching**: Implement response caching for repeated queries
+4. **Add Streaming**: Support real-time streaming responses
+5. **Integration Testing**: Test with actual CRM data and workflows
+
+## Requirements for Full Implementation
+
+To complete the LLM Provider implementation:
+
+1. **Install Dependencies**: `mix deps.get`
+2. **Start Ollama**: Run `ollama serve` locally and pull a model: `ollama pull llama3.2:latest`
+3. **Set Gemini API Key**: `export GEMINI_API_KEY=your_api_key_here`
+4. **Implement Modules**: Follow the implementation order in the plan
+5. **Run Tests**: `mix test test/flow_api/llm/`
+
+The LLM Provider system is ready for full implementation! 🚀

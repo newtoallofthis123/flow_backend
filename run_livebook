@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -e
+
+APP_NAME=$(grep -Eo 'app: :\w*' mix.exs | cut -d ':' -f 3)
+
+echo $APP_NAME
+
+export LIVEBOOK_HOME=$(pwd)/livebooks
+export LIVEBOOK_DATA_PATH=$(pwd)/.livebook
+export LIVEBOOK_TOKEN_ENABLED=false
+export LIVEBOOK_COOKIE=$APP_NAME
+export LIVEBOOK_DEFAULT_RUNTIME="attached:$APP_NAME@$(hostname):$APP_NAME"
+export LIVEBOOK_IFRAME_PORT=8090
+
+if [[ $(uname) == "Darwin" ]] && [[ $(uname -m) == 'arm64' ]]; then
+  export EXLA_FLAGS=--config=macos_arm64
+fi
+
+livebook server

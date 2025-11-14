@@ -70,3 +70,4 @@ yarn-error.log
 
 # Secret files
 config/*.secret.exs
+.livebook

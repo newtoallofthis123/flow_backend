@@ -8,6 +8,7 @@ default:
 # Load environment variables
 set dotenv-load := true
 set dotenv-filename := ".env.dev"
+set dotenv-path := ".env.dev.local"
 
 # Setup and Installation
 # ----------------------
@@ -37,7 +38,7 @@ gen-secrets:
 
 # Start Phoenix server in interactive mode (iex)
 dev:
-    iex -S mix phx.server
+    APP_NAME=$(grep -Eo 'app: :\w*' mix.exs | cut -d ':' -f 3) && iex --name $APP_NAME --cookie $APP_NAME -S mix phx.server
 
 # Start Phoenix server (non-interactive)
 server:

@@ -276,6 +276,57 @@ Optional:
 
 ## 🛠️ Development Tools
 
+### Livebook (Interactive Development)
+
+Livebook provides an interactive notebook environment for experimenting with your Flow API code.
+
+#### Starting Livebook
+
+```bash
+# Install dependencies (includes Livebook)
+mix deps.get
+
+# Start Livebook with our configuration
+livebook server --config livebook.exs
+
+# Or start with default settings
+mix livebook
+```
+
+#### Accessing Livebook
+
+- **URL**: http://localhost:8888
+- **Authentication**: Use the token from `livebook.exs` (default: "flow-api-dev-token-please-change-in-production")
+- **Notebooks**: Available in the `livebooks/` directory
+
+#### Available Notebooks
+
+- **LLM Provider Test** (`livebooks/llm_provider_test.livemd`): Test the LLM provider implementation with real examples
+
+#### Livebook Features
+
+- 📊 **Interactive Code Execution**: Run Elixir code in cells
+- 🧪 **Real-time Testing**: Test LLM providers and parsers interactively  
+- 📈 **Data Visualization**: Visualize CRM data and AI responses
+- 🔧 **API Experimentation**: Test your API endpoints directly
+- 📝 **Documentation**: Create living documentation with executable examples
+
+#### Example Usage in Livebook
+
+```elixir
+# Test LLM provider
+alias FlowApi.LLM.Provider
+
+{:ok, response} = Provider.ask("What is Elixir?", provider: :ollama)
+IO.puts(response.content)
+
+# Parse structured responses
+alias FlowApi.LLM.Parser
+
+text = "<sentiment>positive</sentiment><score>85</score>"
+Parser.parse_tags(text, ["sentiment", "score"])
+```
+
 ### IEx Helpers
 
 ```elixir
