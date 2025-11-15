@@ -27,9 +27,15 @@ defmodule FlowApi.Contacts.CommunicationWorker do
            Contacts.generate_ai_insight(updated_contact, %{
              type: :communication,
              subject: event.subject,
-             summary: event.summary
+             summary: event.summary,
+             event_type: event.type,
+             sentiment: event.sentiment
            }),
          Logger.debug("Parsed AI insight params: #{inspect(insight_params)}"),
+         {:ok, event} <-
+           Contacts.update_communication(event.id, %{
+             ai_analysis: insight_params["description"]
+           }),
          {:ok, _insight} <-
            Contacts.create_ai_insight(contact_id, %{
              insight_type: insight_params["insight_type"],
@@ -38,9 +44,7 @@ defmodule FlowApi.Contacts.CommunicationWorker do
              confidence: parse_confidence(insight_params["confidence"]),
              actionable: insight_params["actionable"] == "true",
              suggested_action: insight_params["suggested_action"]
-           }),
-         {:ok, _updated_contact} <-
-           update_contact_metrics(contact, %{event | ai_analysis: insight_params["ai_analysis"]}) do
+           }) do
       old_score = contact.health_score
       new_score = updated_contact.health_score
 

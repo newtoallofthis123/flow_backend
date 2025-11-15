@@ -7,7 +7,7 @@ defmodule FlowApiWeb.Channels.Serializers do
   alias FlowApi.Deals.{Deal, Activity}
   alias FlowApi.Contacts.Contact
   alias FlowApi.Messages.{Message, Conversation}
-  alias FlowApi.Calendar.Event
+  alias FlowApi.Calendar.{Event, MeetingPreparation}
   alias FlowApi.Notifications.Notification
 
   @doc """
@@ -149,6 +149,26 @@ defmodule FlowApiWeb.Channels.Serializers do
   end
 
   def serialize_calendar_event(_), do: nil
+
+  @doc """
+  Serialize meeting preparation for WebSocket events.
+  """
+  def serialize_meeting_preparation(%MeetingPreparation{} = preparation) do
+    %{
+      id: preparation.id,
+      eventId: preparation.event_id,
+      suggestedTalkingPoints: preparation.suggested_talking_points || [],
+      recentInteractions: preparation.recent_interactions || [],
+      dealContext: preparation.deal_context,
+      competitorIntel: preparation.competitor_intel || [],
+      personalNotes: preparation.personal_notes || [],
+      documentsToShare: preparation.documents_to_share || [],
+      createdAt: datetime_to_iso(preparation.inserted_at),
+      updatedAt: datetime_to_iso(preparation.updated_at)
+    }
+  end
+
+  def serialize_meeting_preparation(_), do: nil
 
   @doc """
   Serialize a notification for WebSocket events.

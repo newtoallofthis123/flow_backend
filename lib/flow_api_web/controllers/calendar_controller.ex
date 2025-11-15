@@ -44,9 +44,16 @@ defmodule FlowApiWeb.CalendarController do
         |> json(%{data: event})
 
       {:error, changeset} ->
+        errors =
+          Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+            Enum.reduce(opts, msg, fn {key, value}, acc ->
+              String.replace(acc, "%{#{key}}", to_string(value))
+            end)
+          end)
+
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{error: %{code: "VALIDATION_ERROR", details: errors}})
     end
   end
 
@@ -69,9 +76,16 @@ defmodule FlowApiWeb.CalendarController do
         |> json(%{error: %{code: "NOT_FOUND", message: "Event not found"}})
 
       {:error, changeset} ->
+        errors =
+          Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+            Enum.reduce(opts, msg, fn {key, value}, acc ->
+              String.replace(acc, "%{#{key}}", to_string(value))
+            end)
+          end)
+
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "VALIDATION_ERROR", details: changeset}})
+        |> json(%{error: %{code: "VALIDATION_ERROR", details: errors}})
     end
   end
 
@@ -91,7 +105,7 @@ defmodule FlowApiWeb.CalendarController do
     end
   end
 
-  def update_status(conn, %{"id" => id, "status" => status}) do
+  def update_status(conn, %{"calendar_id" => id, "status" => status}) do
     user = Guardian.Plug.current_resource(conn)
 
     with {:ok, event} <- find_event(user.id, id),
@@ -109,7 +123,7 @@ defmodule FlowApiWeb.CalendarController do
     end
   end
 
-  def add_outcome(conn, %{"id" => id} = params) do
+  def add_outcome(conn, %{"calendar_id" => id} = params) do
     user = Guardian.Plug.current_resource(conn)
 
     with {:ok, event} <- find_event(user.id, id),
@@ -122,10 +136,27 @@ defmodule FlowApiWeb.CalendarController do
         conn
         |> put_status(:not_found)
         |> json(%{error: %{code: "NOT_FOUND", message: "Event not found"}})
+
+      {:error, :event_not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: %{code: "NOT_FOUND", message: "Event not found"}})
+
+      {:error, changeset} ->
+        errors =
+          Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+            Enum.reduce(opts, msg, fn {key, value}, acc ->
+              String.replace(acc, "%{#{key}}", to_string(value))
+            end)
+          end)
+
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{error: %{code: "VALIDATION_ERROR", details: errors}})
     end
   end
 
-  def preparation(conn, %{"id" => id}) do
+  def preparation(conn, %{"calendar_id" => id}) do
     user = Guardian.Plug.current_resource(conn)
 
     case Calendar.get_event(user.id, id) do
@@ -135,10 +166,26 @@ defmodule FlowApiWeb.CalendarController do
         |> json(%{error: %{code: "NOT_FOUND", message: "Event not found"}})
 
       event ->
-        # TODO: Return preparation data
         conn
         |> put_status(:ok)
         |> json(%{data: event.preparation})
+    end
+  end
+
+  def insights(conn, %{"calendar_id" => id}) do
+    user = Guardian.Plug.current_resource(conn)
+
+    with {:ok, _event} <- find_event(user.id, id) do
+      insights = Calendar.get_insights(id)
+
+      conn
+      |> put_status(:ok)
+      |> json(%{data: insights})
+    else
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: %{code: "NOT_FOUND", message: "Event not found"}})
     end
   end
 

@@ -141,6 +141,27 @@ defmodule FlowApiWeb.Channels.Broadcast do
     })
   end
 
+  @doc """
+  Broadcast when meeting preparation is ready for a calendar event.
+  """
+  def broadcast_calendar_preparation_ready(user_id, event_id, preparation) do
+    serialized_preparation = Serializers.serialize_meeting_preparation(preparation)
+    broadcast_to_user(user_id, "event:preparation_ready", %{
+      eventId: event_id,
+      preparation: serialized_preparation
+    })
+  end
+
+  @doc """
+  Broadcast when post-meeting insights are generated.
+  """
+  def broadcast_calendar_post_meeting_insights(user_id, event_id, outcome_id) do
+    broadcast_to_user(user_id, "event:post_meeting_insights", %{
+      eventId: event_id,
+      outcomeId: outcome_id
+    })
+  end
+
   # Notification Events
 
   @doc """

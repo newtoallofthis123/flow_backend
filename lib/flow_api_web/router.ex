@@ -66,6 +66,7 @@ defmodule FlowApiWeb.Router do
       patch("/status", CalendarController, :update_status)
       post("/outcome", CalendarController, :add_outcome)
       get("/preparation", CalendarController, :preparation)
+      get("/insights", CalendarController, :insights)
     end
 
     post("/calendar/smart-scheduling", CalendarController, :smart_schedule)

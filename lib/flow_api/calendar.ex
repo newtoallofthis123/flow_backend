@@ -42,7 +42,14 @@ defmodule FlowApi.Calendar do
     |> Repo.insert()
     |> case do
       {:ok, event} ->
-        # TODO: Generate AI meeting preparation
+        # Enqueue AI meeting preparation worker
+        %{
+          "event_id" => event.id,
+          "user" => %{"id" => user_id}
+        }
+        |> FlowApi.Calendar.CalendarWorker.new()
+        |> Oban.insert()
+
         {:ok, event}
 
       error ->
@@ -57,16 +64,29 @@ defmodule FlowApi.Calendar do
   end
 
   def add_outcome(event_id, attrs) do
-    %MeetingOutcome{event_id: event_id}
-    |> MeetingOutcome.changeset(attrs)
-    |> Repo.insert()
-    |> case do
-      {:ok, outcome} ->
-        # TODO: Auto-create follow-up if needed
-        {:ok, outcome}
+    # Get the event to get user_id
+    with {:ok, event} <- get_event_for_outcome(event_id),
+         {:ok, outcome} <-
+           %MeetingOutcome{event_id: event_id}
+           |> MeetingOutcome.changeset(attrs)
+           |> Repo.insert() do
+      # Enqueue post-meeting insights worker
+      %{
+        "event_id" => event_id,
+        "outcome_id" => outcome.id,
+        "user" => %{"id" => event.user_id}
+      }
+      |> FlowApi.Calendar.CalendarWorker.new()
+      |> Oban.insert()
 
-      error ->
-        error
+      {:ok, outcome}
+    end
+  end
+
+  defp get_event_for_outcome(event_id) do
+    case Repo.get(Event, event_id) do
+      nil -> {:error, :event_not_found}
+      event -> {:ok, event}
     end
   end
 
@@ -163,4 +183,13 @@ defmodule FlowApi.Calendar do
   end
 
   defp preload_tags(nil), do: nil
+
+  def get_insights(event_id) do
+    alias FlowApi.Calendar.MeetingInsight
+
+    MeetingInsight
+    |> where([i], i.event_id == ^event_id)
+    |> order_by([i], desc: i.inserted_at)
+    |> Repo.all()
+  end
 end
