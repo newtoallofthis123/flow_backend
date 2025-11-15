@@ -8,6 +8,8 @@ defmodule FlowApi.Contacts do
   alias FlowApi.Contacts.{Contact, CommunicationEvent, AIInsight}
   alias FlowApi.Tags.{Tag, Tagging}
 
+  require Logger
+
   # Contact queries
   def list_contacts(user_id, params \\ %{}) do
     contacts =
@@ -30,15 +32,16 @@ defmodule FlowApi.Contacts do
       |> Repo.one()
 
     case contact do
-      nil -> nil
-      contact -> preload_tags(contact)
+      nil -> {:error, :not_found}
+      contact -> {:ok, preload_tags(contact)}
     end
   end
 
   def create_contact(user_id, attrs) do
-    with {:ok, contact} <- %Contact{user_id: user_id}
-                           |> Contact.changeset(attrs)
-                           |> Repo.insert() do
+    with {:ok, contact} <-
+           %Contact{user_id: user_id}
+           |> Contact.changeset(attrs)
+           |> Repo.insert() do
       # Preload associations for JSON encoding
       contact =
         contact
@@ -50,9 +53,10 @@ defmodule FlowApi.Contacts do
   end
 
   def update_contact(%Contact{} = contact, attrs) do
-    with {:ok, updated_contact} <- contact
-                                   |> Contact.changeset(attrs)
-                                   |> Repo.update() do
+    with {:ok, updated_contact} <-
+           contact
+           |> Contact.changeset(attrs)
+           |> Repo.update() do
       # Preload associations for JSON encoding
       updated_contact =
         updated_contact
@@ -74,6 +78,18 @@ defmodule FlowApi.Contacts do
     %CommunicationEvent{contact_id: contact_id, user_id: user_id}
     |> CommunicationEvent.changeset(attrs)
     |> Repo.insert()
+  end
+
+  def update_communication(event_id, attrs) do
+    case Repo.get(CommunicationEvent, event_id) do
+      nil ->
+        {:error, :not_found}
+
+      event ->
+        event
+        |> CommunicationEvent.changeset(attrs)
+        |> Repo.update()
+    end
   end
 
   # AI Insights
@@ -106,7 +122,15 @@ defmodule FlowApi.Contacts do
              model: "mistral:latest",
              temperature: 0.7
            ),
-         params <- Parser.parse_tags(content, ["insight_type", "title", "description", "confidence", "actionable", "suggested_action"]) do
+         params <-
+           Parser.parse_tags(content, [
+             "insight_type",
+             "title",
+             "description",
+             "confidence",
+             "actionable",
+             "suggested_action"
+           ]) do
       {:ok, params}
     else
       error -> error
@@ -125,7 +149,7 @@ defmodule FlowApi.Contacts do
     <description>A detailed insight about how to engage with this new contact (20-40 words)</description>
     <confidence>A number between 0-100 indicating confidence level</confidence>
     <actionable>true or false</actionable>
-    <suggested_action>If actionable is true, provide a specific first action to take (10-20 words), otherwise leave empty</suggested_action>
+    <suggested_action>If actionable is true, provi 'de a specific first action to take (10-20 words), otherwise leave empty</suggested_action>
     ```
     """
   end
@@ -155,7 +179,16 @@ defmodule FlowApi.Contacts do
     """
   end
 
-  defp build_insight_context(%{type: :communication, subject: subject, summary: summary, event_type: event_type, sentiment: sentiment}, contact_info) do
+  defp build_insight_context(
+         %{
+           type: :communication,
+           subject: subject,
+           summary: summary,
+           event_type: event_type,
+           sentiment: sentiment
+         },
+         contact_info
+       ) do
     """
     Recent Communication:
     Subject: #{subject}
@@ -169,11 +202,12 @@ defmodule FlowApi.Contacts do
 
   def update_contact_metrics(contact, communication_sentiment) do
     # Calculate health score based on sentiment
-    health_adjustment = case communication_sentiment do
-      "positive" -> 5
-      "negative" -> -10
-      _ -> 0
-    end
+    health_adjustment =
+      case communication_sentiment do
+        "positive" -> 5
+        "negative" -> -10
+        _ -> 0
+      end
 
     new_health_score = min(100, max(0, (contact.health_score || 50) + health_adjustment))
 
@@ -181,25 +215,31 @@ defmodule FlowApi.Contacts do
     new_churn_risk = max(0, min(100, 100 - new_health_score + :rand.uniform(20) - 10))
 
     # Determine relationship health category
-    new_relationship_health = cond do
-      new_health_score >= 70 -> "high"
-      new_health_score >= 40 -> "medium"
-      true -> "low"
-    end
+    new_relationship_health =
+      cond do
+        new_health_score >= 70 -> "high"
+        new_health_score >= 40 -> "medium"
+        true -> "low"
+      end
 
     # Update overall sentiment based on recent communication
-    new_sentiment = case communication_sentiment do
-      "positive" -> "positive"
-      "negative" -> "negative"
-      _ -> contact.sentiment || "neutral"
-    end
+    new_sentiment =
+      case communication_sentiment do
+        "positive" -> "positive"
+        "negative" -> "negative"
+        _ -> contact.sentiment || "neutral"
+      end
 
     # Calculate next follow-up date based on health score
-    next_follow_up = case new_relationship_health do
-      "high" -> DateTime.utc_now() |> DateTime.add(7, :day)  # Weekly for high health
-      "medium" -> DateTime.utc_now() |> DateTime.add(3, :day)  # Every 3 days for medium
-      "low" -> DateTime.utc_now() |> DateTime.add(1, :day)  # Daily for low health
-    end
+    next_follow_up =
+      case new_relationship_health do
+        # Weekly for high health
+        "high" -> DateTime.utc_now() |> DateTime.add(7, :day)
+        # Every 3 days for medium
+        "medium" -> DateTime.utc_now() |> DateTime.add(3, :day)
+        # Daily for low health
+        "low" -> DateTime.utc_now() |> DateTime.add(1, :day)
+      end
 
     update_contact(contact, %{
       health_score: new_health_score,

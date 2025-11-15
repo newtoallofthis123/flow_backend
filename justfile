@@ -37,12 +37,8 @@ gen-secrets:
 # -----------
 
 # Start Phoenix server in interactive mode (iex)
-dev:
+run-server:
     APP_NAME=$(grep -Eo 'app: :\w*' mix.exs | cut -d ':' -f 3) && iex --name $APP_NAME --cookie $APP_NAME -S mix phx.server
-
-# Start Phoenix server (non-interactive)
-server:
-    mix phx.server
 
 # Start with custom port
 server-port port:

@@ -38,8 +38,10 @@ defmodule FlowApi.LLM.Provider do
       )
   """
 
-  alias FlowApi.LLM.{Config, Types}
-  alias FlowApi.LLM.Connectors.{Ollama, Gemini}
+  alias FlowApi.LLM.Config
+  alias FlowApi.LLM.Types
+  alias FlowApi.LLM.Connectors.Ollama
+  alias FlowApi.LLM.Connectors.Gemini
 
   require Logger
 

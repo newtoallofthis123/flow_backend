@@ -3,6 +3,9 @@ defmodule FlowApiWeb.SearchController do
 
   alias FlowApi.Guardian
   alias FlowApi.Search.NaturalLanguage
+  alias FlowApi.Contacts
+  alias FlowApi.Deals
+  alias FlowApi.Calendar
 
   require Logger
 
@@ -56,14 +59,20 @@ defmodule FlowApiWeb.SearchController do
     })
   end
 
-  @doc """
-  Existing keyword-based search (keep this).
-  """
   def search(conn, %{"q" => query}) do
     user = Guardian.Plug.current_resource(conn)
-    # TODO: Implement search across contacts, deals, conversations
-    conn
-    |> put_status(:ok)
-    |> json(%{data: %{results: []}})
+
+    with {:ok, contacts} <- Contacts.list_contacts(user.id, %{"search" => query}),
+         {:ok, deals} <- Deals.list_deals(user.id, %{"search" => query}),
+         {:ok, events} <- Calendar.list_events(user.id, %{"search" => query}) do
+      conn
+      |> put_status(:ok)
+      |> json(%{data: %{results: contacts ++ deals ++ events}})
+    else
+      {:error, reason} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: %{code: "SEARCH_ERROR", message: reason}})
+    end
   end
 end

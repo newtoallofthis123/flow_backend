@@ -12,6 +12,7 @@ defmodule FlowApi.Deals do
     deals = Deal
     |> where([d], d.user_id == ^user_id and is_nil(d.deleted_at))
     |> apply_deal_filters(params)
+    |> apply_search(params)
     |> preload([:activities, :insights, :signals])
     |> Repo.all()
 
@@ -278,6 +279,12 @@ defmodule FlowApi.Deals do
     end
   end
   defp apply_deal_filters(query, _), do: query
+
+  defp apply_search(query, %{"search" => search}) when byte_size(search) > 0 do
+    search_pattern = "%#{search}%"
+    where(query, [d], ilike(d.title, ^search_pattern) or ilike(d.company, ^search_pattern))
+  end
+  defp apply_search(query, _), do: query
 
   defp closing_this_month?(%Deal{expected_close_date: nil}), do: false
   defp closing_this_month?(%Deal{expected_close_date: date}) do

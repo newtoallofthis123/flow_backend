@@ -1,7 +1,6 @@
 defmodule FlowApiWeb.TagController do
   use FlowApiWeb, :controller
 
-  import Ecto.Query
   alias FlowApi.Repo
   alias FlowApi.Tags.Tag
 

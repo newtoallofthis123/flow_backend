@@ -6,6 +6,7 @@ defmodule FlowApiWeb.ContactController do
   alias FlowApi.LLM.Parser
   alias FlowApi.LLM.Provider
   alias FlowApiWeb.Channels.Broadcast
+  alias FlowApi.Contacts.CommunicationWorker
   alias FlowApiWeb.Channels.Serializers
 
   require Logger
@@ -23,15 +24,15 @@ defmodule FlowApiWeb.ContactController do
     user = Guardian.Plug.current_resource(conn)
 
     case Contacts.get_contact(user.id, id) do
-      nil ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: %{code: "NOT_FOUND", message: "Contact not found"}})
-
-      contact ->
+      {:ok, contact} ->
         conn
         |> put_status(:ok)
         |> json(%{data: contact})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: %{code: "NOT_FOUND", message: "Contact not found"}})
     end
   end
 
@@ -40,7 +41,7 @@ defmodule FlowApiWeb.ContactController do
 
     with {:ok, contact} <- Contacts.create_contact(user.id, params),
          # Reload contact with associations for AI insight generation
-         full_contact <- Contacts.get_contact(user.id, contact.id),
+         {:ok, full_contact} <- Contacts.get_contact(user.id, contact.id),
          {:ok, insight_params} <-
            Contacts.generate_ai_insight(full_contact, %{type: :new_contact}),
          {:ok, _insight} <-
@@ -158,85 +159,31 @@ defmodule FlowApiWeb.ContactController do
     """
 
     with user <- Guardian.Plug.current_resource(conn),
-         contact when not is_nil(contact) <- Contacts.get_contact(user.id, contact_id),
-         {:ok, %{content: classification_content}} <-
-           Provider.complete(
-             classification_prompt,
-             [
-               %{
-                 role: :user,
-                 content: """
-                 Subject: #{subject}
-                 Summary: #{summary}
-
-                 Contact Info: #{Contacts.pretty_print(contact)}
-                 """
-               }
-             ],
-             provider: :ollama,
-             model: "mistral:latest",
-             temperature: 0.7
-           ),
-         classification_params <-
-           Parser.parse_tags(classification_content, ["type", "sentiment", "ai_analysis"]),
-         Logger.debug("Parsed communication event params: #{inspect(classification_content)}"),
+         {:ok, contact} <- Contacts.get_contact(user.id, contact_id),
          {:ok, event} <-
-           Contacts.add_communication(contact_id, user.id, %{
+           Contacts.add_communication(contact.id, user.id, %{
              subject: subject,
+             type: "note",
              summary: summary,
-             type: classification_params["type"] |> String.downcase(),
-             occurred_at: Map.get(params, "occurred_at", DateTime.utc_now()),
-             sentiment: classification_params["sentiment"] |> String.downcase(),
-             ai_analysis: classification_params["ai_analysis"]
-           }),
-         {:ok, updated_contact} <-
-           Contacts.update_contact_metrics(contact, classification_params["sentiment"]),
-         {:ok, insight_params} <-
-           Contacts.generate_ai_insight(contact, %{
-             type: :communication,
-             subject: subject,
-             summary: summary,
-             event_type: classification_params["type"],
-             sentiment: classification_params["sentiment"]
-           }),
-         Logger.debug("Parsed AI insight params: #{inspect(insight_params)}"),
-         {:ok, _insight} <-
-           Contacts.create_ai_insight(contact_id, %{
-             insight_type: insight_params["insight_type"],
-             title: insight_params["title"],
-             description: insight_params["description"],
-             confidence: parse_confidence(insight_params["confidence"]),
-             actionable: insight_params["actionable"] == "true",
-             suggested_action: insight_params["suggested_action"]
+             occurred_at: Map.get(params, "occurred_at", DateTime.utc_now())
            }) do
-      # Broadcast updates
-      old_score = contact.health_score
-      new_score = updated_contact.health_score
-
-      if old_score != new_score do
-        Broadcast.broadcast_contact_health_changed(user.id, contact_id, old_score, new_score)
-      end
-
-      changes = Serializers.serialize_contact_changes(updated_contact)
-      Broadcast.broadcast_contact_updated(user.id, contact_id, changes)
+      Oban.insert(
+        CommunicationWorker.new(%{
+          contact_id: contact.id,
+          event: event,
+          user: user
+        })
+      )
 
       conn
       |> put_status(:created)
       |> json(%{
         data: %{
-          event: event,
-          updated_contact: %{
-            health_score: updated_contact.health_score,
-            churn_risk: updated_contact.churn_risk,
-            relationship_health: updated_contact.relationship_health,
-            sentiment: updated_contact.sentiment,
-            last_contact_at: updated_contact.last_contact_at,
-            next_follow_up_at: updated_contact.next_follow_up_at
-          }
+          event: event
         }
       })
     else
-      nil ->
+      {:error, :not_found} ->
         conn
         |> put_status(:not_found)
         |> json(%{error: %{code: "NOT_FOUND", message: "Contact not found"}})
@@ -277,10 +224,7 @@ defmodule FlowApiWeb.ContactController do
   end
 
   defp find_contact(user_id, contact_id) do
-    case Contacts.get_contact(user_id, contact_id) do
-      nil -> {:error, :not_found}
-      contact -> {:ok, contact}
-    end
+    Contacts.get_contact(user_id, contact_id)
   end
 
   defp translate_changeset_errors(changeset) do

@@ -1,49 +1,6 @@
 defmodule FlowApi.LLM.Parser do
   @moduledoc """
   Parser functions for extracting structured data from LLM responses.
-
-  This module provides utilities to parse common patterns in LLM outputs:
-  - Code blocks: ```language...```
-  - XML-style tags: <tag>...</tag>
-  - Multi-line tag content
-  - Nested tags
-
-  ## Examples
-
-      # Parse code blocks
-      response = \"\"\"
-      Here's some code:
-      ```elixir
-      defmodule Hello do
-        def world, do: "Hello!"
-      end
-      ```
-
-      And some JSON:
-      ```json
-      {"name": "John"}
-      ```
-      \"\"\"
-
-      FlowApi.LLM.Parser.parse_code_blocks(response)
-      #=> [
-      #  %{language: "elixir", code: "defmodule Hello do..."},
-      #  %{language: "json", code: "{\"name\": \"John\"}"}
-      #]
-
-      # Parse tags
-      response = \"\"\"
-      <analysis>
-      The sentiment is positive.
-      </analysis>
-      <score>85</score>
-      \"\"\"
-
-      FlowApi.LLM.Parser.parse_tags(response, ["analysis", "score"])
-      #=> %{
-      #  "analysis" => "The sentiment is positive.",
-      #  "score" => "85"
-      #}
   """
 
   @doc """
@@ -71,7 +28,6 @@ defmodule FlowApi.LLM.Parser do
       iex> FlowApi.LLM.Parser.parse_code_blocks(text)
       [%{language: "python", code: "print(\"hello\")"}]
   """
-  @spec parse_code_blocks(String.t()) :: [%{language: String.t(), code: String.t()}]
   def parse_code_blocks(text) when is_binary(text) do
     # Regex to match ```lang\ncode\n```
     regex = ~r/```(\w+)\n(.*?)\n```/s

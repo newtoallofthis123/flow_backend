@@ -43,7 +43,7 @@ config :flow_api, FlowApi.Guardian,
 config :flow_api, Oban,
   repo: FlowApi.Repo,
   plugins: [Oban.Plugins.Pruner],
-  queues: [default: 10, reminders: 5]
+  queues: [default: 10, reminders: 5, communication_events: 10]
 
 # LLM Provider Configuration
 config :flow_api, FlowApi.LLM,

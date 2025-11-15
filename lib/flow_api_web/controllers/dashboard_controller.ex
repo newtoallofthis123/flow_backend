@@ -14,7 +14,7 @@ defmodule FlowApiWeb.DashboardController do
   end
 
   def action_items(conn, _params) do
-    user = Guardian.Plug.current_resource(conn)
+    # user = Guardian.Plug.current_resource(conn)
     # TODO: Implement action items
     conn
     |> put_status(:ok)

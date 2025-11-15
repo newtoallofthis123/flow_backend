@@ -110,7 +110,7 @@ defmodule FlowApiWeb.ConversationController do
     end
   end
 
-  def add_tag(conn, %{"id" => id} = params) do
+  def add_tag(conn, %{"id" => id} = _params) do
     user = Guardian.Plug.current_resource(conn)
 
     case Messages.get_conversation(user.id, id) do
@@ -119,7 +119,7 @@ defmodule FlowApiWeb.ConversationController do
         |> put_status(:not_found)
         |> json(%{error: %{code: "NOT_FOUND", message: "Conversation not found"}})
 
-      conversation ->
+      _conversation ->
         # TODO: Implement add tag
         conn
         |> put_status(:ok)

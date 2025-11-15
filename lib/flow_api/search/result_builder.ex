@@ -46,10 +46,7 @@ defmodule FlowApi.Search.ResultBuilder do
     |> Enum.filter(&valid_uuid?(&1.id))
     |> Enum.map(fn match ->
       case Contacts.get_contact(user_id, match.id) do
-        nil ->
-          nil
-
-        contact ->
+        {:ok, contact} ->
           contact
           |> Map.from_struct()
           |> Map.drop([
@@ -62,6 +59,9 @@ defmodule FlowApi.Search.ResultBuilder do
           ])
           |> Map.put(:search_score, match.score)
           |> Map.put(:search_reason, match.reason)
+
+        {:error, :not_found} ->
+          nil
       end
     end)
     |> Enum.reject(&is_nil/1)

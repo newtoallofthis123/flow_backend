@@ -21,7 +21,7 @@ defmodule FlowApiWeb.NotificationController do
   end
 
   def delete(conn, %{"id" => id}) do
-    user = Guardian.Plug.current_resource(conn)
+    # user = Guardian.Plug.current_resource(conn)
 
     case Repo.get(Notification, id) do
       nil ->
@@ -38,7 +38,7 @@ defmodule FlowApiWeb.NotificationController do
   end
 
   def mark_read(conn, %{"id" => id}) do
-    user = Guardian.Plug.current_resource(conn)
+    # user = Guardian.Plug.current_resource(conn)
 
     case Repo.get(Notification, id) do
       nil ->

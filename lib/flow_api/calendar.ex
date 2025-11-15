@@ -5,7 +5,8 @@ defmodule FlowApi.Calendar do
 
   import Ecto.Query
   alias FlowApi.Repo
-  alias FlowApi.Calendar.{Event, MeetingPreparation, MeetingOutcome, MeetingInsight}
+  alias FlowApi.Calendar.Event
+  alias FlowApi.Calendar.MeetingOutcome
   alias FlowApi.Tags.{Tag, Tagging}
 
   def list_events(user_id, params \\ %{}) do
@@ -14,6 +15,7 @@ defmodule FlowApi.Calendar do
       |> where([e], e.user_id == ^user_id)
       |> apply_calendar_filters(params)
       |> apply_date_range(params)
+      |> apply_search(params)
       |> preload([:contact, :deal, :preparation, :outcome, :attendees])
       |> order_by([e], asc: e.start_time)
       |> Repo.all()
@@ -121,6 +123,12 @@ defmodule FlowApi.Calendar do
   end
 
   defp apply_date_range(query, _), do: query
+
+  defp apply_search(query, %{"search" => search}) when byte_size(search) > 0 do
+    search_pattern = "%#{search}%"
+    where(query, [e], ilike(e.title, ^search_pattern) or ilike(e.description, ^search_pattern))
+  end
+  defp apply_search(query, _), do: query
 
   # Preload tags for polymorphic association
   defp preload_tags(events) when is_list(events) do

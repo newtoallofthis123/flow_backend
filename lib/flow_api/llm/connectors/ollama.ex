@@ -20,7 +20,7 @@ defmodule FlowApi.LLM.Connectors.Ollama do
 
   @behaviour FlowApi.LLM.Connectors.Behaviour
 
-  alias FlowApi.LLM.{Config, Types}
+  alias FlowApi.LLM.Config
   require Logger
 
   @impl true
