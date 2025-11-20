@@ -8,7 +8,7 @@ defmodule FlowApi.Search.Cache do
 
   use GenServer
 
-  @cache_ttl_seconds 300
+  @cache_ttl_seconds 60 * 60 * 24
 
   # Client API
 

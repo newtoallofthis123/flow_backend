@@ -136,8 +136,8 @@ defmodule FlowApi.Search.NaturalLanguage do
   end
 
   defp query_llm(query, serialized, opts) do
-    provider = Keyword.get(opts, :provider, :ollama)
-    model = Keyword.get(opts, :model, "mistral:latest")
+    provider = Keyword.get(opts, :provider, :gemini)
+    model = Keyword.get(opts, :model, "gemini-2.5-flash-lite")
     temperature = Keyword.get(opts, :temperature, 0.3)
 
     system_prompt = Prompts.search_system_prompt()
