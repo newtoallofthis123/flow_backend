@@ -171,4 +171,13 @@ defmodule FlowApiWeb.Channels.Broadcast do
     serialized_notification = Serializers.serialize_notification(notification)
     broadcast_to_user(user_id, "notification:new", serialized_notification)
   end
+
+  # Overview Worker Events
+
+  @doc """
+  Broadcast when the forecast has been updated by the overview worker.
+  """
+  def broadcast_forecast_updated(user_id) do
+    broadcast_to_user(user_id, "overview:forecast_updated", %{})
+  end
 end

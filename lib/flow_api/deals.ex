@@ -9,21 +9,23 @@ defmodule FlowApi.Deals do
   alias FlowApi.Tags.{Tag, Tagging}
 
   def list_deals(user_id, params \\ %{}) do
-    deals = Deal
-    |> where([d], d.user_id == ^user_id and is_nil(d.deleted_at))
-    |> apply_deal_filters(params)
-    |> apply_search(params)
-    |> preload([:activities, :insights, :signals])
-    |> Repo.all()
+    deals =
+      Deal
+      |> where([d], d.user_id == ^user_id and is_nil(d.deleted_at))
+      |> apply_deal_filters(params)
+      |> apply_search(params)
+      |> preload([:activities, :insights, :signals])
+      |> Repo.all()
 
     preload_tags(deals)
   end
 
   def get_deal(user_id, id) do
-    deal = Deal
-    |> where([d], d.id == ^id and d.user_id == ^user_id and is_nil(d.deleted_at))
-    |> preload([:activities, :insights, :signals])
-    |> Repo.one()
+    deal =
+      Deal
+      |> where([d], d.id == ^id and d.user_id == ^user_id and is_nil(d.deleted_at))
+      |> preload([:activities, :insights, :signals])
+      |> Repo.one()
 
     case deal do
       nil -> nil
@@ -32,9 +34,10 @@ defmodule FlowApi.Deals do
   end
 
   def create_deal(user_id, attrs) do
-    with {:ok, deal} <- %Deal{user_id: user_id}
-                        |> Deal.changeset(attrs)
-                        |> Repo.insert() do
+    with {:ok, deal} <-
+           %Deal{user_id: user_id}
+           |> Deal.changeset(attrs)
+           |> Repo.insert() do
       # Preload associations for JSON encoding and AI analysis
       deal =
         deal
@@ -46,9 +49,10 @@ defmodule FlowApi.Deals do
   end
 
   def update_deal(%Deal{} = deal, attrs) do
-    with {:ok, updated_deal} <- deal
-                                |> Deal.changeset(attrs)
-                                |> Repo.update() do
+    with {:ok, updated_deal} <-
+           deal
+           |> Deal.changeset(attrs)
+           |> Repo.update() do
       # Preload associations for JSON encoding
       updated_deal =
         updated_deal
@@ -60,9 +64,10 @@ defmodule FlowApi.Deals do
   end
 
   def update_stage(%Deal{} = deal, stage) do
-    with {:ok, updated_deal} <- deal
-                                |> Deal.changeset(%{stage: stage})
-                                |> Repo.update() do
+    with {:ok, updated_deal} <-
+           deal
+           |> Deal.changeset(%{stage: stage})
+           |> Repo.update() do
       # Preload associations
       updated_deal =
         updated_deal
@@ -173,7 +178,10 @@ defmodule FlowApi.Deals do
     """
   end
 
-  defp build_deal_context(%{type: :stage_change, old_stage: old_stage, new_stage: new_stage}, deal_info) do
+  defp build_deal_context(
+         %{type: :stage_change, old_stage: old_stage, new_stage: new_stage},
+         deal_info
+       ) do
     """
     Deal Stage Changed:
     Previous Stage: #{old_stage}
@@ -186,7 +194,10 @@ defmodule FlowApi.Deals do
     """
   end
 
-  defp build_deal_context(%{type: :activity_added, activity_type: activity_type, activity_notes: notes}, deal_info) do
+  defp build_deal_context(
+         %{type: :activity_added, activity_type: activity_type, activity_notes: notes},
+         deal_info
+       ) do
     """
     New Activity Added:
     Type: #{activity_type}
@@ -199,37 +210,66 @@ defmodule FlowApi.Deals do
     """
   end
 
-  defp get_expected_tags(%{type: :new_deal}), do: ["probability", "confidence", "priority", "insight_type", "insight_title", "insight_description", "suggested_action"]
-  defp get_expected_tags(%{type: :stage_change}), do: ["probability", "confidence", "insight_type", "insight_title", "insight_description", "suggested_action"]
-  defp get_expected_tags(%{type: :activity_added}), do: ["probability_change", "insight_type", "insight_title", "insight_description", "suggested_action"]
+  defp get_expected_tags(%{type: :new_deal}),
+    do: [
+      "probability",
+      "confidence",
+      "priority",
+      "insight_type",
+      "insight_title",
+      "insight_description",
+      "suggested_action"
+    ]
+
+  defp get_expected_tags(%{type: :stage_change}),
+    do: [
+      "probability",
+      "confidence",
+      "insight_type",
+      "insight_title",
+      "insight_description",
+      "suggested_action"
+    ]
+
+  defp get_expected_tags(%{type: :activity_added}),
+    do: [
+      "probability_change",
+      "insight_type",
+      "insight_title",
+      "insight_description",
+      "suggested_action"
+    ]
 
   defp pretty_print_deal(deal) do
     # Load contact only for AI analysis if contact_id exists
-    contact_info = if deal.contact_id do
-      contact = Repo.get(FlowApi.Contacts.Contact, deal.contact_id)
-      if contact do
-        """
-        Contact: #{contact.name} (#{contact.company || "N/A"})
-        Contact Health Score: #{contact.health_score}
-        Contact Sentiment: #{contact.sentiment}
-        """
-      else
-        "No contact information available"
-      end
-    else
-      "No contact associated"
-    end
+    contact_info =
+      if deal.contact_id do
+        contact = Repo.get(FlowApi.Contacts.Contact, deal.contact_id)
 
-    recent_activities = if deal.activities && length(deal.activities) > 0 do
-      deal.activities
-      |> Enum.take(5)
-      |> Enum.map(fn activity ->
-        "#{activity.activity_type} - #{activity.notes || "No notes"}"
-      end)
-      |> Enum.join("\n")
-    else
-      "No activities recorded"
-    end
+        if contact do
+          """
+          Contact: #{contact.name} (#{contact.company || "N/A"})
+          Contact Health Score: #{contact.health_score}
+          Contact Sentiment: #{contact.sentiment}
+          """
+        else
+          "No contact information available"
+        end
+      else
+        "No contact associated"
+      end
+
+    recent_activities =
+      if deal.activities && length(deal.activities) > 0 do
+        deal.activities
+        |> Enum.take(5)
+        |> Enum.map(fn activity ->
+          "#{activity.activity_type} - #{activity.notes || "No notes"}"
+        end)
+        |> Enum.join("\n")
+      else
+        "No activities recorded"
+      end
 
     """
     Title: #{deal.title}
@@ -253,11 +293,13 @@ defmodule FlowApi.Deals do
   def get_forecast(user_id) do
     deals = list_deals(user_id, %{"filter" => "open"})
 
-    total_pipeline = deals
+    total_pipeline =
+      deals
       |> Enum.map(&Decimal.to_float(&1.value))
       |> Enum.sum()
 
-    weighted_forecast = deals
+    weighted_forecast =
+      deals
       |> Enum.map(fn d -> Decimal.to_float(d.value) * (d.probability / 100) end)
       |> Enum.sum()
 
@@ -271,22 +313,34 @@ defmodule FlowApi.Deals do
 
   defp apply_deal_filters(query, %{"filter" => filter}) do
     case filter do
-      "hot" -> where(query, [d], d.probability > 70)
-      "at-risk" -> where(query, [d], d.probability < 30 and d.stage not in ["closed_won", "closed_lost"])
-      "closing-soon" -> where(query, [d], d.expected_close_date <= ^Date.add(Date.utc_today(), 30))
-      "open" -> where(query, [d], d.stage not in ["closed_won", "closed_lost"])
-      _ -> query
+      "hot" ->
+        where(query, [d], d.probability > 70)
+
+      "at-risk" ->
+        where(query, [d], d.probability < 30 and d.stage not in ["closed_won", "closed_lost"])
+
+      "closing-soon" ->
+        where(query, [d], d.expected_close_date <= ^Date.add(Date.utc_today(), 30))
+
+      "open" ->
+        where(query, [d], d.stage not in ["closed_won", "closed_lost"])
+
+      _ ->
+        query
     end
   end
+
   defp apply_deal_filters(query, _), do: query
 
   defp apply_search(query, %{"search" => search}) when byte_size(search) > 0 do
     search_pattern = "%#{search}%"
     where(query, [d], ilike(d.title, ^search_pattern) or ilike(d.company, ^search_pattern))
   end
+
   defp apply_search(query, _), do: query
 
   defp closing_this_month?(%Deal{expected_close_date: nil}), do: false
+
   defp closing_this_month?(%Deal{expected_close_date: date}) do
     today = Date.utc_today()
     Date.beginning_of_month(date) == Date.beginning_of_month(today)

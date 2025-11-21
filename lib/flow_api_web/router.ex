@@ -90,6 +90,13 @@ defmodule FlowApiWeb.Router do
     post("/llm/complete", LLMController, :complete)
     get("/llm/health", LLMController, :health_check)
     get("/llm/models", LLMController, :list_models)
+
+    # Overview worker management
+    get("/overview/status", OverviewController, :status)
+    post("/overview/enable", OverviewController, :enable)
+    post("/overview/disable", OverviewController, :disable)
+    patch("/overview/config", OverviewController, :update_config)
+    post("/overview/run-now", OverviewController, :run_now)
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

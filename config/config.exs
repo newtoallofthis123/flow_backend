@@ -48,7 +48,8 @@ config :flow_api, Oban,
     reminders: 5,
     communication_events: 10,
     calendar_events: 10,
-    deal_analysis: 10
+    deal_analysis: 10,
+    overview_analysis: 2
   ]
 
 # LLM Provider Configuration
