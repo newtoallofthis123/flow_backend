@@ -79,7 +79,21 @@ defmodule FlowApiWeb.Telemetry do
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),
       summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
+      summary("vm.total_run_queue_lengths.io"),
+
+      # Oban Metrics
+      summary("oban.job.start.system_time",
+        tags: [:worker, :queue],
+        unit: {:native, :millisecond}
+      ),
+      summary("oban.job.stop.duration",
+        tags: [:worker, :queue],
+        unit: {:native, :millisecond}
+      ),
+      summary("oban.job.exception.duration",
+        tags: [:worker, :queue],
+        unit: {:native, :millisecond}
+      )
     ]
   end
 

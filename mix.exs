@@ -60,6 +60,7 @@ defmodule FlowApi.MixProject do
 
       # Development/Test
       {:phoenix_live_view, "~> 1.0.0"},
+      {:phoenix_live_dashboard, "~> 0.8.3"},
       {:phoenix_live_reload, "~> 1.5", only: :dev},
       {:faker, "~> 0.18", only: [:dev, :test]},
       {:ex_machina, "~> 2.7", only: :test},

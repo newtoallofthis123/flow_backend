@@ -94,14 +94,14 @@ defmodule FlowApiWeb.Router do
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   # Commented out for API-only app
-  # if Application.compile_env(:flow_api, :dev_routes) do
-  #   import Phoenix.LiveDashboard.Router
-  #
-  #   scope "/dev" do
-  #     pipe_through [:fetch_session, :protect_from_forgery]
-  #
-  #     live_dashboard "/dashboard", metrics: FlowApiWeb.Telemetry
-  #     forward "/mailbox", Plug.Swoosh.MailboxPreview
-  #   end
-  # end
+  if Application.compile_env(:flow_api, :dev_routes) do
+    import Phoenix.LiveDashboard.Router
+
+    scope "/dev" do
+      pipe_through([:fetch_session, :protect_from_forgery])
+
+      live_dashboard("/dashboard", metrics: FlowApiWeb.Telemetry)
+      forward("/mailbox", Plug.Swoosh.MailboxPreview)
+    end
+  end
 end
